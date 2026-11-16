@@ -12,10 +12,14 @@ const CHAVE_TOKEN = 'chamados.token';
 const PERFIS = ['Gerente', 'Frentista', 'Motorista', 'Escritorio', 'Diretoria'];
 const PERFIS_REDE = ['Escritorio', 'Diretoria'];
 const PRIORIDADES = ['Normal', 'Alta', 'Baixa'];
-const PRAZO_HORAS = { 'Alta': 24, 'Normal': 72, 'Baixa': 168 };
+const PRAZO_HORAS = { 'Alta': 24, 'Normal': 48, 'Baixa': 72 }; // passou do prazo sem fechar = EM ATRASO
 const STATUS = ['Aberto', 'Em andamento', 'Aguardando terceiro', 'Fechado'];
 const RESULTADOS = ['Resolvido', 'Resolvido parcialmente', 'Não procede'];
+const PERIODICIDADES = ['Diária', 'Semanal', 'Mensal', 'Anual'];
+const PERFIS_DESTINO = ['Gerente', 'Frentista'];
 const MAX_FOTOS = 5;
+const MAX_ANEXOS = 5;
+const MAX_ANEXO_BYTES = 5 * 1024 * 1024;
 const FOTO_LADO_MAX = 1024;
 const COR_UNIDADE = { sjb: 'var(--cor-sjb)', lza: 'var(--cor-lza)', aru: 'var(--cor-aru)' };
 
@@ -93,7 +97,8 @@ const podeVerPainel = (u) => ehRede(u) || u.perfil === 'Gerente';
 const unidadesDo = (u) => (ehRede(u) ? db.unidades.map((x) => x.id) : u.unidades.filter((id) => unidade(id)));
 const gerenteDa = (u, unidadeId) => u.perfil === 'Gerente' && u.unidades.includes(unidadeId);
 const podeGerirChamado = (u, c) => c.status !== 'Fechado' && (ehRede(u) || gerenteDa(u, c.unidade));
-const podeFechar = (u, c) => c.status !== 'Fechado' && (podeGerirChamado(u, c) || c.responsavel === u.id);
+const podeDarAndamento = (u, c) => c.status !== 'Fechado' && (podeGerirChamado(u, c) || c.responsavel === u.id);
+const podeFechar = podeDarAndamento;
 const chamadosVisiveis = () => db.chamados; // o servidor já filtra
 
 // ===================== Fotos =====================
@@ -205,7 +210,8 @@ const classeStatus = { 'Aberto': 'st-aberto', 'Em andamento': 'st-andamento', 'A
 const classePrior = { 'Alta': 'pr-alta', 'Normal': 'pr-normal', 'Baixa': 'pr-baixa' };
 const seloStatus = (s) => `<span class="selo ${classeStatus[s]}">${esc(s)}</span>`;
 const seloPrior = (p) => `<span class="selo ${classePrior[p]}">${esc(p)}</span>`;
-const seloVencido = (c) => (vencido(c) ? '<span class="selo vencido">Vencido</span>' : '');
+const seloVencido = (c) => (vencido(c) ? '<span class="selo vencido">EM ATRASO</span>' : '');
+const seloTipo = (c) => (c.tipo === 'Recorrência' ? '<span class="selo st-andamento">Recorrência</span>' : c.tipo === 'Direcionado' ? '<span class="selo st-aguardando">Direcionado</span>' : '');
 const ICONES = {
   painel: '<path d="M3 13h8V3H3zM13 21h8V11h-8zM3 21h8v-6H3zM13 3v6h8V3z"/>',
   chamados: '<path d="M4 5h16v14H4z"/><path d="M8 9h8M8 13h8M8 17h5"/>',
@@ -394,7 +400,7 @@ function telaPainel() {
     </div>
     <div class="kpis">
       <div class="kpi"><div class="valor">${fmtNum(pendentes.length)}</div><div class="rotulo">Chamados pendentes</div></div>
-      <div class="kpi ${vencidos.length ? 'alerta' : ''}"><div class="valor">${fmtNum(vencidos.length)}</div><div class="rotulo">Vencidos (prazo estourado)</div></div>
+      <div class="kpi ${vencidos.length ? 'alerta' : ''}"><div class="valor">${fmtNum(vencidos.length)}</div><div class="rotulo">EM ATRASO (prazo estourado)</div></div>
       <div class="kpi ${altas.length ? 'atencao' : ''}"><div class="valor">${fmtNum(altas.length)}</div><div class="rotulo">Prioridade alta pendentes</div></div>
       <div class="kpi"><div class="valor">${fmtNum(fechadosPer.length)}</div><div class="rotulo">Fechados no período</div></div>
       <div class="kpi"><div class="valor">${fmtDuracao(mediaH)}</div><div class="rotulo">Tempo médio de resolução</div></div>
@@ -405,7 +411,7 @@ function telaPainel() {
       <section class="cartao"><h2 class="grafico-titulo">Pendentes por status</h2>${barras(porStatus, { cor: 'var(--azul-rio)' })}${fonte}</section>
       <section class="cartao"><h2 class="grafico-titulo">Quem mais abre chamados</h2>${barras(quemAbre, { cor: 'var(--azul-rio)' })}${fonte}</section>
       <section class="cartao"><h2 class="grafico-titulo">Quem mais fecha chamados</h2>${barras(quemResolve)}${fonte}</section>
-      <section class="cartao"><h2 class="grafico-titulo">Vencidos e de prioridade alta</h2>${criticos.length ? criticos.slice(0, 8).map((c) => `<a class="item-chamado" href="#/chamado/${c.id}"><strong>${numeroChamado(c)} · ${esc(c.titulo)}</strong><span class="mudo pequeno">${esc(nomeUnidade(c.unidade))} · ${esc(nomeSetor(c.setor))} · prazo ${fmtDataHora(c.prazoEm)}</span><div class="linha">${seloPrior(c.prioridade)}${seloStatus(c.status)}${seloVencido(c)}</div></a>`).join('') : '<div class="vazio">Nenhum chamado vencido ou de prioridade alta.</div>'}</section>
+      <section class="cartao"><h2 class="grafico-titulo">EM ATRASO e de prioridade alta</h2>${criticos.length ? criticos.slice(0, 8).map((c) => `<a class="item-chamado" href="#/chamado/${c.id}"><strong>${numeroChamado(c)} · ${esc(c.titulo)}</strong><span class="mudo pequeno">${esc(nomeUnidade(c.unidade))} · ${esc(nomeSetor(c.setor))} · prazo ${fmtDataHora(c.prazoEm)}</span><div class="linha">${seloPrior(c.prioridade)}${seloStatus(c.status)}${seloVencido(c)}</div></a>`).join('') : '<div class="vazio">Nenhum chamado em atraso ou de prioridade alta.</div>'}</section>
     </div>`);
   $('#f-uni').onchange = (e) => { filtroPainel.unidade = e.target.value; telaPainel(); };
   $('#f-dias').onchange = (e) => { filtroPainel.dias = e.target.value; telaPainel(); };
@@ -433,7 +439,7 @@ function telaChamados() {
   moldura('chamados', `
     <div class="cabecalho-pagina"><div><h1>Chamados</h1><p class="mudo">Você vê ${escopo}.</p></div><div class="acoes"><button class="botao secundario" id="b-atualizar">Atualizar</button><a class="botao" href="#/novo">＋ Novo chamado</a></div></div>
     <div class="filtros">
-      <div class="campo"><label for="f-st">Situação</label><select id="f-st">${opcoes([{ id: 'pendentes', nome: 'Pendentes' }, { id: 'fila', nome: 'Fila do Escritório (sem responsável)' }, { id: 'vencidos', nome: 'Vencidos' }, ...STATUS.map((s) => ({ id: s, nome: s })), { id: '', nome: 'Todas' }], filtroLista.status)}</select></div>
+      <div class="campo"><label for="f-st">Situação</label><select id="f-st">${opcoes([{ id: 'pendentes', nome: 'Pendentes' }, { id: 'fila', nome: 'Fila do Escritório (sem responsável)' }, { id: 'vencidos', nome: 'EM ATRASO' }, ...STATUS.map((s) => ({ id: s, nome: s })), { id: '', nome: 'Todas' }], filtroLista.status)}</select></div>
       <div class="campo"><label for="f-un">Unidade</label><select id="f-un"><option value="">Todas</option>${opcoes(unidadesDo(u).map(unidade), filtroLista.unidade)}</select></div>
       <div class="campo"><label for="f-se">Setor</label><select id="f-se"><option value="">Todos</option>${opcoes(db.setores, filtroLista.setor)}</select></div>
       <div class="campo"><label for="f-pr">Prioridade</label><select id="f-pr"><option value="">Todas</option>${opcoes(PRIORIDADES, filtroLista.prioridade)}</select></div>
@@ -442,9 +448,9 @@ function telaChamados() {
     <p class="mudo pequeno">${fmtNum(lista.length)} chamado(s)</p>
     ${lista.length ? `
     <div class="tabela-rolagem so-desktop"><table><thead><tr><th>Nº</th><th>Título</th><th>Unidade</th><th>Setor</th><th>Prioridade</th><th>Status</th><th>Aberto em</th><th>Prazo</th><th>Responsável</th></tr></thead><tbody>
-      ${lista.map((c) => `<tr class="clicavel" data-id="${c.id}"><td>${numeroChamado(c)}</td><td>${esc(c.titulo)}</td><td>${esc(nomeUnidade(c.unidade))}</td><td>${esc(nomeSetor(c.setor))}</td><td>${seloPrior(c.prioridade)}</td><td>${seloStatus(c.status)} ${seloVencido(c)}</td><td>${fmtDataHora(c.abertoEm)}</td><td>${c.status === 'Fechado' ? '—' : fmtDataHora(c.prazoEm)}</td><td>${esc(nomeUsuario(c.responsavel))}</td></tr>`).join('')}
+      ${lista.map((c) => `<tr class="clicavel" data-id="${c.id}"><td>${numeroChamado(c)}</td><td>${esc(c.titulo)}</td><td>${esc(nomeUnidade(c.unidade))}</td><td>${esc(nomeSetor(c.setor))}</td><td>${seloPrior(c.prioridade)}</td><td>${seloStatus(c.status)} ${seloVencido(c)} ${seloTipo(c)}</td><td>${fmtDataHora(c.abertoEm)}</td><td>${c.status === 'Fechado' ? '—' : fmtDataHora(c.prazoEm)}</td><td>${esc(nomeUsuario(c.responsavel))}</td></tr>`).join('')}
     </tbody></table></div>
-    <div class="lista-cartoes">${lista.map((c) => `<a class="item-chamado" href="#/chamado/${c.id}"><strong>${numeroChamado(c)} · ${esc(c.titulo)}</strong><span class="mudo pequeno">${esc(nomeUnidade(c.unidade))} · ${esc(nomeSetor(c.setor))} · ${fmtDataHora(c.abertoEm)}</span><div class="linha">${seloPrior(c.prioridade)}${seloStatus(c.status)}${seloVencido(c)}</div></a>`).join('')}</div>`
+    <div class="lista-cartoes">${lista.map((c) => `<a class="item-chamado" href="#/chamado/${c.id}"><strong>${numeroChamado(c)} · ${esc(c.titulo)}</strong><span class="mudo pequeno">${esc(nomeUnidade(c.unidade))} · ${esc(nomeSetor(c.setor))} · ${fmtDataHora(c.abertoEm)}</span><div class="linha">${seloPrior(c.prioridade)}${seloStatus(c.status)}${seloVencido(c)}${seloTipo(c)}</div></a>`).join('')}</div>`
       : '<div class="vazio">Nenhum chamado com esses filtros.</div>'}`);
   const liga = (id, k) => { $(id).onchange = (e) => { filtroLista[k] = e.target.value; telaChamados(); }; };
   liga('#f-st', 'status'); liga('#f-un', 'unidade'); liga('#f-se', 'setor'); liga('#f-pr', 'prioridade');
@@ -462,14 +468,27 @@ function telaNovo() {
     moldura('novo', '<h1>Novo chamado</h1><div class="vazio">Seu usuário não tem unidade vinculada. Peça ao Escritorio ou à Diretoria para ajustar o cadastro.</div>');
     return;
   }
+  const rede = ehRede(u);
   moldura('novo', `
-    <div class="cabecalho-pagina"><div><h1>Novo chamado</h1><p class="mudo">Você mesmo classifica o chamado. Ele entra na fila do Escritório, que trata ou redireciona. Toda reclassificação fica no histórico.</p></div></div>
+    <div class="cabecalho-pagina"><div><h1>Novo chamado</h1><p class="mudo">${rede
+      ? 'Abra para a fila do Escritório ou direto para um gerente/frentista (único ou recorrente). Quem recebe responde, dá andamento e fecha com foto.'
+      : 'Você mesmo classifica o chamado. Ele entra na fila do Escritório, que trata ou redireciona. Toda reclassificação fica no histórico.'}</p></div></div>
     <form id="form-novo" class="cartao" novalidate style="max-width:760px">
       <div class="grade grade-3">
         <div class="campo"><label for="n-uni">Unidade <span class="obrig">*</span></label><select id="n-uni" required>${minhas.length > 1 ? '<option value="">Selecione</option>' : ''}${opcoes(minhas.map(unidade), minhas.length === 1 ? minhas[0] : '')}</select></div>
         <div class="campo"><label for="n-set">Setor <span class="obrig">*</span></label><select id="n-set" required><option value="">Selecione</option>${opcoes(db.setores)}</select></div>
         <div class="campo"><label for="n-pri">Prioridade <span class="obrig">*</span></label><select id="n-pri" required><option value="">Selecione</option>${opcoes(PRIORIDADES)}</select></div>
       </div>
+      ${rede ? `<div class="grade grade-2">
+        <div class="campo"><label for="n-para">Para quem</label><select id="n-para"></select></div>
+        <div class="campo"><label for="n-tipo">Tipo</label><select id="n-tipo"><option value="unico">Chamado único</option><option value="rec">Chamado recorrente</option></select></div>
+      </div>
+      <div class="grade grade-3" id="n-rec" hidden>
+        <div class="campo"><label for="n-per">Periodicidade <span class="obrig">*</span></label><select id="n-per"><option value="">Selecione</option>${opcoes(PERIODICIDADES)}</select></div>
+        <div class="campo"><label for="n-ini">Primeira ocorrência <span class="obrig">*</span></label><input type="date" id="n-ini"></div>
+        <div class="campo"><label for="n-fim">Fim da recorrência <span class="obrig">*</span></label><input type="date" id="n-fim"></div>
+      </div>
+      <p class="mudo pequeno" id="n-rec-info" hidden>Cada ocorrência vira um chamado separado (selo “Recorrência”), aberto automaticamente 3 dias antes da data programada (diária: no início do dia). Vence às 23:59 da data programada.</p>` : ''}
       <p class="mudo pequeno" id="n-prazo"></p>
       <div class="campo"><label for="n-tit">Título <span class="obrig">*</span></label><input type="text" id="n-tit" maxlength="80" placeholder="Ex.: Bomba 03 com vazamento" required></div>
       <div class="campo"><label for="n-desc">Descrição do problema <span class="obrig">*</span></label><textarea id="n-desc" required placeholder="O que aconteceu, onde, desde quando"></textarea></div>
@@ -478,20 +497,60 @@ function telaNovo() {
       <div class="acoes"><button class="botao" id="n-enviar">Abrir chamado</button><a class="botao secundario" href="#/chamados">Cancelar</a></div>
     </form>`);
   ligarFotos('n-fotos', fotos);
-  $('#n-pri').onchange = (e) => { $('#n-prazo').textContent = e.target.value ? `Prazo para esta prioridade: ${fmtDuracao(PRAZO_HORAS[e.target.value])}.` : ''; };
+  const recorrente = () => rede && $('#n-tipo').value === 'rec';
+  const textoPrazo = () => {
+    const p = $('#n-pri').value;
+    $('#n-prazo').textContent = !p ? '' : recorrente() ? 'Prazo: até 23:59 da data programada de cada ocorrência.'
+      : `Prazo para finalizar: ${PRAZO_HORAS[p]} h. Depois disso o chamado fica EM ATRASO.`;
+  };
+  $('#n-pri').onchange = textoPrazo;
+  if (rede) {
+    // destinatários: gerentes e frentistas da unidade escolhida
+    const montarPara = () => {
+      const uni = $('#n-uni').value, atual = $('#n-para').value;
+      const lista = db.usuarios.filter((x) => PERFIS_DESTINO.includes(x.perfil) && (!uni || x.unidades.includes(uni)))
+        .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')).map((x) => ({ id: x.id, nome: `${x.nome} (${x.perfil})` }));
+      $('#n-para').innerHTML = '<option value="">Fila do Escritório (chamado normal)</option>' + opcoes(lista, atual);
+      atualizarFormulario();
+    };
+    const atualizarFormulario = () => {
+      const para = $('#n-para').value;
+      if (!para) $('#n-tipo').value = 'unico';
+      $('#n-tipo').disabled = !para;
+      $('#n-rec').hidden = !recorrente(); $('#n-rec-info').hidden = !recorrente();
+      // foto da abertura: obrigatória só no chamado normal
+      $('#n-fotos').closest('.campo').querySelector('.obrig').hidden = !!para;
+      textoPrazo();
+    };
+    $('#n-uni').addEventListener('change', montarPara);
+    $('#n-para').onchange = atualizarFormulario;
+    $('#n-tipo').onchange = atualizarFormulario;
+    const hoje = new Date(); $('#n-ini').min = $('#n-fim').min = `${hoje.getFullYear()}-${dois(hoje.getMonth() + 1)}-${dois(hoje.getDate())}`;
+    montarPara();
+  }
   $('#form-novo').onsubmit = async (ev) => {
     ev.preventDefault();
     const dados = { unidade: $('#n-uni').value, setor: $('#n-set').value, prioridade: $('#n-pri').value, titulo: $('#n-tit').value.trim(), descricao: $('#n-desc').value.trim() };
+    if (rede && $('#n-para').value) dados.para = $('#n-para').value;
+    const rec = recorrente();
+    if (rec) Object.assign(dados, { periodicidade: $('#n-per').value, inicio: $('#n-ini').value, fim: $('#n-fim').value });
     const faltam = [];
     if (!dados.unidade) faltam.push('unidade'); if (!dados.setor) faltam.push('setor'); if (!dados.prioridade) faltam.push('prioridade');
     if (!dados.titulo) faltam.push('título'); if (!dados.descricao) faltam.push('descrição');
-    if (!fotos.length) { faltam.push('foto'); $('#n-fotos-erro').textContent = 'Trava: nenhum chamado é aberto sem foto.'; }
+    if (rec) { if (!dados.periodicidade) faltam.push('periodicidade'); if (!dados.inicio) faltam.push('primeira ocorrência'); if (!dados.fim) faltam.push('fim da recorrência'); }
+    if (!dados.para && !fotos.length) { faltam.push('foto'); $('#n-fotos-erro').textContent = 'Trava: nenhum chamado é aberto sem foto.'; }
     if (faltam.length) { $('#n-erro').textContent = 'Preencha: ' + faltam.join(', ') + '.'; return; }
+    if (rec && dados.fim < dados.inicio) { $('#n-erro').textContent = 'O fim da recorrência deve ser igual ou depois da primeira ocorrência.'; return; }
     $('#n-enviar').disabled = true;
-    const r = await executar('abrir', { chamado: dados, fotos }, null, (res) => {
-      aviso(`Chamado ${'#' + String(res.numero).padStart(4, '0')} aberto e enviado à fila do Escritório.`);
-      location.hash = '#/chamado/' + res.id;
-    });
+    const r = rec
+      ? await executar('abrirRecorrente', { chamado: dados, fotos }, null, (res) => {
+        aviso(`Recorrência criada: ${res.total} ocorrência(s). ${res.abertos ? res.abertos + ' já aberta(s) agora.' : 'A primeira abre automaticamente perto da data.'}`);
+        location.hash = '#/chamados';
+      })
+      : await executar('abrir', { chamado: dados, fotos }, null, (res) => {
+        aviso(`Chamado ${'#' + String(res.numero).padStart(4, '0')} aberto${dados.para ? ' para ' + nomeUsuario(dados.para) : ' e enviado à fila do Escritório'}.`);
+        location.hash = '#/chamado/' + res.id;
+      });
     if (!r) $('#n-enviar').disabled = false;
   };
 }
@@ -506,11 +565,15 @@ function telaDetalhe(id) {
   const c = db.chamados.find((x) => x.id === id);
   if (!c) { moldura('chamados', '<h1>Chamado</h1><div class="vazio">Chamado não encontrado ou sem permissão de acesso.</div>'); return; }
   const gerir = podeGerirChamado(u, c);
+  const andar = podeDarAndamento(u, c);
   const fechar = podeFechar(u, c);
+  const rec = c.recorrencia ? (db.recorrencias || []).find((r) => r.id === c.recorrencia) : null;
+  const encerrarRec = rec && rec.ativa && ehRede(u);
+  const anexos = [];
   moldura('chamados', `
     <div class="cabecalho-pagina"><div><p class="mudo"><a href="#/chamados">← Chamados</a></p><h1>${numeroChamado(c)} · ${esc(c.titulo)}</h1>
-      <div class="acoes">${seloStatus(c.status)}${seloPrior(c.prioridade)}${seloVencido(c)}</div></div>
-      <div class="acoes">${gerir ? '<button class="botao secundario" id="b-reclass">Reclassificar</button>' : ''}${fechar ? '<button class="botao" id="b-fechar">Fechar chamado</button>' : ''}</div></div>
+      <div class="acoes">${seloStatus(c.status)}${seloPrior(c.prioridade)}${seloVencido(c)}${seloTipo(c)}</div></div>
+      <div class="acoes">${encerrarRec ? '<button class="botao secundario" id="b-enc-rec">Encerrar recorrência</button>' : ''}${gerir ? '<button class="botao secundario" id="b-reclass">Reclassificar</button>' : ''}${fechar ? '<button class="botao" id="b-fechar">Fechar chamado</button>' : ''}</div></div>
     <div class="grade grade-2">
       <section class="cartao">
         <h2>Dados</h2>
@@ -519,7 +582,9 @@ function telaDetalhe(id) {
           <div><dt>Setor</dt><dd>${esc(nomeSetor(c.setor))}</dd></div>
           <div><dt>Aberto por</dt><dd>${esc(nomeUsuario(c.abertoPor))}</dd></div>
           <div><dt>Aberto em</dt><dd>${fmtDataHora(c.abertoEm)}</dd></div>
-          <div><dt>Prazo</dt><dd>${fmtDataHora(c.prazoEm)}</dd></div>
+          ${c.tipo === 'Recorrência' ? `<div><dt>Data programada</dt><dd>${esc(c.dataProgramada.split('-').reverse().join('/'))}</dd></div>
+          ${rec ? `<div><dt>Recorrência</dt><dd>${esc(rec.periodicidade)} · ${esc(rec.inicio.split('-').reverse().join('/'))} a ${esc(rec.fim.split('-').reverse().join('/'))}${rec.ativa ? '' : ' (encerrada)'}</dd></div>` : ''}` : ''}
+          <div><dt>Prazo</dt><dd>${fmtDataHora(c.prazoEm)}${vencido(c) ? ' · <strong style="color:var(--erro,#c0392b)">EM ATRASO</strong>' : ''}</dd></div>
           <div><dt>Responsável</dt><dd>${c.responsavel ? esc(nomeUsuario(c.responsavel)) : 'Fila do Escritório'}</dd></div>
           ${c.status === 'Fechado' ? `<div><dt>Fechado por</dt><dd>${esc(nomeUsuario(c.fechadoPor))}</dd></div><div><dt>Fechado em</dt><dd>${fmtDataHora(c.fechadoEm)} (${fmtDuracao(horasResolucao(c))})</dd></div>` : ''}
         </dl>
@@ -528,14 +593,16 @@ function telaDetalhe(id) {
         ${c.status === 'Fechado' ? `<h3 style="margin-top:14px">Solução · ${esc(c.resultado)}</h3><p class="texto-livre">${esc(c.solucao)}</p><h3>Fotos do fechamento</h3>${miniaturas(c.fotosFechamento)}` : ''}
       </section>
       <div class="grade">
-        ${gerir ? `<section class="cartao"><h2>Andamento</h2><form id="form-and" novalidate>
+        ${andar ? `<section class="cartao"><h2>Andamento</h2><form id="form-and" novalidate>
           <div class="grade grade-2">
             <div class="campo"><label for="a-st">Status</label><select id="a-st">${opcoes(STATUS.filter((s) => s !== 'Fechado'), c.status)}</select></div>
-            <div class="campo"><label for="a-resp">Responsável</label><select id="a-resp"><option value="">— Fila do Escritório —</option>${opcoes(responsaveisPossiveis(c), c.responsavel)}</select></div>
+            ${gerir ? `<div class="campo"><label for="a-resp">Responsável</label><select id="a-resp"><option value="">— Fila do Escritório —</option>${opcoes(responsaveisPossiveis(c), c.responsavel)}</select></div>` : ''}
           </div><button class="botao secundario">Salvar andamento</button><span class="pequeno mudo"> Para fechar, use “Fechar chamado” (exige foto).</span></form></section>` : ''}
-        <section class="cartao"><h2>Comentários</h2>
-          ${c.comentarios.length ? c.comentarios.map((m) => `<div class="comentario"><div class="pequeno mudo">${esc(nomeUsuario(m.usuario))} · ${fmtDataHora(m.em)}</div><div class="texto-livre">${esc(m.texto)}</div></div>`).join('') : '<p class="mudo">Nenhum comentário.</p>'}
-          <form id="form-com" novalidate><div class="campo"><label for="c-txt" class="pequeno">Novo comentário</label><textarea id="c-txt" style="min-height:70px"></textarea></div><button class="botao secundario">Comentar</button></form>
+        <section class="cartao"><h2>Comentários e tratativa</h2>
+          ${c.comentarios.length ? c.comentarios.map((m) => `<div class="comentario"><div class="pequeno mudo">${esc(nomeUsuario(m.usuario))} · ${fmtDataHora(m.em)}</div>${m.texto ? `<div class="texto-livre">${esc(m.texto)}</div>` : ''}${blocoAnexos(m.anexos)}</div>`).join('') : '<p class="mudo">Nenhum comentário.</p>'}
+          <form id="form-com" novalidate><div class="campo"><label for="c-txt" class="pequeno">Novo comentário</label><textarea id="c-txt" style="min-height:70px" placeholder="O que foi feito, próximos passos…"></textarea></div>
+            <div class="campo"><span class="rotulo pequeno">Fotos e anexos da tratativa (opcional, até ${MAX_ANEXOS}, 5 MB cada)</span><div class="fotos" id="c-anexos"></div></div>
+            <button class="botao secundario">Comentar</button></form>
         </section>
         <section class="cartao"><h2>Histórico</h2><ul class="linha-tempo">
           ${c.historico.slice().reverse().map((h) => `<li><div class="quando">${fmtDataHora(h.em)} · ${h.usuario ? esc(nomeUsuario(h.usuario)) : 'Sistema'}</div><strong>${esc(h.acao)}</strong>${h.detalhe ? `<div class="pequeno texto-livre">${esc(h.detalhe)}</div>` : ''}</li>`).join('')}
@@ -543,22 +610,70 @@ function telaDetalhe(id) {
       </div>
     </div>`);
   const voltar = () => telaDetalhe(id);
-  if (gerir) {
+  if (andar) {
     $('#form-and').onsubmit = (ev) => {
       ev.preventDefault();
-      const st = $('#a-st').value, resp = $('#a-resp').value;
+      const st = $('#a-st').value, resp = gerir ? $('#a-resp').value : (c.responsavel || '');
       if (st === c.status && resp === (c.responsavel || '')) { aviso('Nada mudou.'); return; }
       executar('andamento', { id, status: st, responsavel: resp }, st !== c.status ? 'Andamento salvo. Quem abriu foi notificado.' : 'Andamento salvo.', voltar);
     };
-    $('#b-reclass').onclick = () => janelaReclassificar(c);
   }
+  if (gerir) $('#b-reclass').onclick = () => janelaReclassificar(c);
   if (fechar) $('#b-fechar').onclick = () => janelaFechar(c);
+  if (encerrarRec) $('#b-enc-rec').onclick = () => confirmar(`Encerrar a recorrência “${rec.titulo}”? Nenhuma nova ocorrência será aberta. As que já foram abertas continuam valendo.`,
+    async () => (await executar('encerrarRecorrencia', { id: rec.id }, 'Recorrência encerrada.', voltar)) !== false, 'Encerrar');
+  ligarAnexos('c-anexos', anexos);
   $('#form-com').onsubmit = (ev) => {
     ev.preventDefault();
     const t = $('#c-txt').value.trim();
-    if (!t) { aviso('Escreva o comentário.', true); return; }
-    executar('comentar', { id, texto: t }, 'Comentário registrado.', voltar);
+    if (!t && !anexos.length) { aviso('Escreva o comentário ou anexe uma foto/arquivo.', true); return; }
+    executar('comentar', { id, texto: t, anexos: anexos.map((a) => ({ nome: a.nome, dataUrl: a.dataUrl })) }, 'Comentário registrado.', voltar);
   };
+  ligarBaixarAnexos();
+}
+
+// ===================== Anexos da tratativa (fotos e arquivos no comentário) =====================
+const ehImagem = (tipo) => /^image\//.test(tipo || '');
+function blocoAnexos(lista) {
+  if (!lista || !lista.length) return '';
+  const fotos = lista.filter((a) => ehImagem(a.tipo)), arqs = lista.filter((a) => !ehImagem(a.tipo));
+  return (fotos.length ? miniaturas(fotos.map((a) => a.id)) : '')
+    + (arqs.length ? `<div class="pequeno" style="margin-top:6px">${arqs.map((a) => `<button type="button" class="botao secundario" style="margin:2px 4px 2px 0;padding:4px 10px" data-anexo-id="${esc(a.id)}" data-anexo-nome="${esc(a.nome)}">📎 ${esc(a.nome)}</button>`).join('')}</div>` : '');
+}
+function ligarBaixarAnexos() {
+  $$('[data-anexo-id]').forEach((b) => b.onclick = async () => {
+    try {
+      const r = await api('foto', { fotoId: b.dataset.anexoId }, { texto: 'Baixando…' });
+      const a = document.createElement('a'); a.href = r.dataUrl; a.download = b.dataset.anexoNome || r.nome || 'anexo';
+      document.body.appendChild(a); a.click(); a.remove();
+    } catch (e) { aviso(e.message, true); }
+  });
+}
+function lerArquivo(arq) {
+  return new Promise((ok, falha) => {
+    if (arq.size > MAX_ANEXO_BYTES) return falha(new Error(`Arquivo grande demais (máx. 5 MB): ${arq.name}`));
+    const l = new FileReader(); l.onerror = () => falha(new Error('Não foi possível ler o arquivo.')); l.onload = () => ok(l.result); l.readAsDataURL(arq);
+  });
+}
+/** Campo de anexos do comentário: botão de foto (abre a câmera) e de arquivo (PDF, planilha etc.). */
+function ligarAnexos(idCampo, lista) {
+  const caixa = document.getElementById(idCampo);
+  const desenhar = () => {
+    caixa.innerHTML = lista.map((a, i) => `<div class="miniatura">${ehImagem(a.tipo) ? `<img src="${a.dataUrl}" alt="">` : `<span class="pequeno" style="padding:6px;word-break:break-all">📎 ${esc(a.nome)}</span>`}<button type="button" class="remover" data-i="${i}" aria-label="Remover anexo ${i + 1}">×</button></div>`).join('')
+      + (lista.length < MAX_ANEXOS ? `<label class="adicionar-foto">＋<br>Foto<input type="file" accept="image/*" capture="environment" multiple data-tipo="foto"></label>
+        <label class="adicionar-foto">＋<br>Arquivo<input type="file" multiple data-tipo="arquivo"></label>` : '');
+    $$('.remover', caixa).forEach((b) => b.addEventListener('click', () => { lista.splice(Number(b.dataset.i), 1); desenhar(); }));
+    $$('input[type=file]', caixa).forEach((inp) => inp.addEventListener('change', async () => {
+      for (const arq of Array.from(inp.files).slice(0, MAX_ANEXOS - lista.length)) {
+        try {
+          if (arq.type.startsWith('image/')) lista.push({ nome: arq.name.replace(/\.\w+$/, '') + '.jpg', tipo: 'image/jpeg', dataUrl: await lerFoto(arq) });
+          else lista.push({ nome: arq.name, tipo: arq.type || 'application/octet-stream', dataUrl: await lerArquivo(arq) });
+        } catch (e) { aviso(e.message, true); }
+      }
+      desenhar();
+    }));
+  };
+  desenhar();
 }
 
 function janelaReclassificar(c) {
@@ -629,7 +744,7 @@ function telaRelatorios() {
     <div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
       <div class="kpi"><div class="valor">${fmtNum(lista.length)}</div><div class="rotulo">Chamados no filtro</div></div>
       <div class="kpi"><div class="valor">${fmtNum(fech.length)}</div><div class="rotulo">Fechados</div></div>
-      <div class="kpi"><div class="valor">${fmtNum(lista.filter(vencido).length)}</div><div class="rotulo">Vencidos em aberto</div></div>
+      <div class="kpi"><div class="valor">${fmtNum(lista.filter(vencido).length)}</div><div class="rotulo">EM ATRASO</div></div>
       <div class="kpi"><div class="valor">${fmtDuracao(mediaH)}</div><div class="rotulo">Tempo médio de resolução</div></div>
     </div>
     ${lista.length ? `<div class="tabela-rolagem"><table><thead><tr><th>Nº</th><th>Aberto em</th><th>Unidade</th><th>Setor</th><th>Prioridade</th><th>Status</th><th>Título</th><th>Aberto por</th><th>Fechado em</th><th class="num">Resolução</th></tr></thead><tbody>
@@ -642,7 +757,7 @@ function telaRelatorios() {
 }
 
 function exportarCSV(lista) {
-  const cab = ['Numero', 'Aberto em', 'Unidade', 'Setor', 'Prioridade', 'Status', 'Vencido', 'Titulo', 'Descricao', 'Aberto por', 'Responsavel', 'Prazo', 'Fechado em', 'Fechado por', 'Resultado', 'Solucao', 'Resolucao (h)'];
+  const cab = ['Numero', 'Aberto em', 'Unidade', 'Setor', 'Prioridade', 'Status', 'Em atraso', 'Titulo', 'Descricao', 'Aberto por', 'Responsavel', 'Prazo', 'Fechado em', 'Fechado por', 'Resultado', 'Solucao', 'Resolucao (h)'];
   const cel = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const linhas = lista.map((c) => [numeroChamado(c), fmtDataHora(c.abertoEm), nomeUnidade(c.unidade), nomeSetor(c.setor), c.prioridade, c.status, vencido(c) ? 'Sim' : 'Não', c.titulo, c.descricao,
     nomeUsuario(c.abertoPor), nomeUsuario(c.responsavel), fmtDataHora(c.prazoEm), c.fechadoEm ? fmtDataHora(c.fechadoEm) : '', c.fechadoPor ? nomeUsuario(c.fechadoPor) : '', c.resultado, c.solucao,
