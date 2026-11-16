@@ -1,0 +1,15 @@
+{
+  "name": "Chamados – Posto do Pescador",
+  "short_name": "Chamados",
+  "description": "Chamados internos da rede Posto do Pescador",
+  "lang": "pt-BR",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#FFFFFF",
+  "theme_color": "#13B29E",
+  "icons": [
+    { "src": "img/icone-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "img/icone-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}
