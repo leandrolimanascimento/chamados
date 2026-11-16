@@ -124,41 +124,32 @@ function lerFoto(arquivo) {
   });
 }
 
+/** Campo de fotos e anexos (abertura e fechamento): foto pela câmera ou qualquer arquivo (PDF, planilha…). */
 function campoFotos(idCampo, rotulo) {
   return `<div class="campo"><span class="rotulo">${esc(rotulo)} <span class="obrig">*</span></span>
     <div class="fotos" id="${idCampo}"></div>
-    <span class="pequeno mudo">Pelo menos 1 foto (até ${MAX_FOTOS}). No celular, abre a câmera.</span>
+    <span class="pequeno mudo">Pelo menos 1 foto ou arquivo (até ${MAX_FOTOS}, 5 MB cada). “Foto” abre a câmera no celular; “Arquivo” aceita PDF, planilha ou qualquer outro tipo.</span>
     <span class="erro-campo" id="${idCampo}-erro"></span></div>`;
 }
-function ligarFotos(idCampo, lista) {
-  const caixa = document.getElementById(idCampo);
-  const desenhar = () => {
-    caixa.innerHTML = lista.map((src, i) => `<div class="miniatura"><img src="${src}" alt="Foto ${i + 1}"><button type="button" class="remover" data-i="${i}" aria-label="Remover foto ${i + 1}">×</button></div>`).join('')
-      + (lista.length < MAX_FOTOS ? `<label class="adicionar-foto">＋<br>Foto<input type="file" accept="image/*" capture="environment" multiple></label>` : '');
-    $$('.remover', caixa).forEach((b) => b.addEventListener('click', () => { lista.splice(Number(b.dataset.i), 1); desenhar(); }));
-    const inp = $('input[type=file]', caixa);
-    if (inp) inp.addEventListener('change', async () => {
-      for (const arq of Array.from(inp.files).slice(0, MAX_FOTOS - lista.length)) {
-        try { lista.push(await lerFoto(arq)); } catch (e) { aviso(e.message, true); }
-      }
-      desenhar();
-      document.getElementById(idCampo + '-erro').textContent = '';
-    });
-  };
-  desenhar();
-}
+/** Lista para enviar ao servidor: [{ nome, dataUrl }]. */
+const paraEnvio = (lista) => lista.map((a) => ({ nome: a.nome, dataUrl: a.dataUrl }));
 
-// Fotos salvas no servidor: carregadas sob demanda e guardadas em memória
+// Fotos e anexos salvos no servidor: carregados sob demanda e guardados em memória
 const cacheFotos = new Map();
-const miniaturas = (ids) => `<div class="fotos">${(ids || []).map((id, i) => `<button type="button" data-foto-id="${esc(id)}" aria-label="Ampliar foto ${i + 1}"><span class="mudo pequeno">…</span></button>`).join('')}</div>`;
+const miniaturas = (ids) => `<div class="fotos">${(ids || []).map((id, i) => `<button type="button" data-foto-id="${esc(id)}" aria-label="Abrir anexo ${i + 1}"><span class="mudo pequeno">…</span></button>`).join('')}</div>`;
 async function obterFoto(id) {
-  if (!cacheFotos.has(id)) cacheFotos.set(id, api('foto', { fotoId: id }, { mostrar: false }).then((r) => r.dataUrl));
+  if (!cacheFotos.has(id)) cacheFotos.set(id, api('foto', { fotoId: id }, { mostrar: false }));
   return cacheFotos.get(id);
 }
+function baixar(dataUrl, nome) { const a = document.createElement('a'); a.href = dataUrl; a.download = nome || 'anexo'; document.body.appendChild(a); a.click(); a.remove(); }
 function carregarMiniaturas() {
   $$('[data-foto-id]').forEach(async (b) => {
-    try { b.innerHTML = `<img src="${await obterFoto(b.dataset.fotoId)}" alt="">`; } catch (e) { b.innerHTML = '<span class="mudo pequeno">erro</span>'; cacheFotos.delete(b.dataset.fotoId); }
-    b.onclick = async () => { try { verFoto(await obterFoto(b.dataset.fotoId)); } catch (e) { aviso(e.message, true); } };
+    let r;
+    try { r = await obterFoto(b.dataset.fotoId); } catch (e) { b.innerHTML = '<span class="mudo pequeno">erro</span>'; cacheFotos.delete(b.dataset.fotoId); return; }
+    const imagem = /^data:image\//.test(r.dataUrl);
+    b.innerHTML = imagem ? `<img src="${r.dataUrl}" alt="">` : `<span class="pequeno" style="padding:6px;word-break:break-all">📎 ${esc(r.nome || 'anexo')}</span>`;
+    b.title = r.nome || '';
+    b.onclick = () => (imagem ? verFoto(r.dataUrl) : baixar(r.dataUrl, r.nome));
   });
 }
 function verFoto(src) {
@@ -432,14 +423,38 @@ function filtrarChamados(lista, f) {
     && (!b || normaliza(`${numeroChamado(c)} ${c.titulo} ${c.descricao}`).includes(b)));
 }
 
+// Ordenação da lista: clicar no título da coluna alterna crescente/decrescente (padrão: mais recentes primeiro)
+const ordemLista = { coluna: 'abertoEm', crescente: false };
+const ORDEM_PRIOR = { 'Alta': 1, 'Normal': 2, 'Baixa': 3 };
+const COLUNAS_LISTA = [
+  { id: 'numero', nome: 'Nº', valor: (c) => Number(c.numero) },
+  { id: 'titulo', nome: 'Título', valor: (c) => normaliza(c.titulo) },
+  { id: 'unidade', nome: 'Unidade', valor: (c) => normaliza(nomeUnidade(c.unidade)) },
+  { id: 'setor', nome: 'Setor', valor: (c) => normaliza(nomeSetor(c.setor)) },
+  { id: 'prioridade', nome: 'Prioridade', valor: (c) => ORDEM_PRIOR[c.prioridade] || 9 },
+  { id: 'status', nome: 'Status', valor: (c) => STATUS.indexOf(c.status) },
+  { id: 'abertoEm', nome: 'Aberto em', valor: (c) => new Date(c.abertoEm).getTime() },
+  { id: 'prazoEm', nome: 'Prazo', valor: (c) => (c.status === 'Fechado' ? Infinity : new Date(c.prazoEm).getTime()) },
+  { id: 'responsavel', nome: 'Responsável', valor: (c) => normaliza(c.responsavel ? nomeUsuario(c.responsavel) : '') },
+];
+function ordenarLista(lista) {
+  const col = COLUNAS_LISTA.find((x) => x.id === ordemLista.coluna) || COLUNAS_LISTA[6];
+  const s = ordemLista.crescente ? 1 : -1;
+  return lista.slice().sort((a, b) => { const va = col.valor(a), vb = col.valor(b); return (va < vb ? -1 : va > vb ? 1 : Number(a.numero) - Number(b.numero)) * s; });
+}
+
 function telaChamados() {
   const u = sessao();
-  const lista = filtrarChamados(chamadosVisiveis(), filtroLista).sort((a, b) => new Date(b.abertoEm) - new Date(a.abertoEm));
+  const lista = ordenarLista(filtrarChamados(chamadosVisiveis(), filtroLista));
+  const cab = COLUNAS_LISTA.map((col) => {
+    const ativa = ordemLista.coluna === col.id;
+    return `<th aria-sort="${ativa ? (ordemLista.crescente ? 'ascending' : 'descending') : 'none'}"><button type="button" class="ordenar" data-ordem="${col.id}" title="Ordenar por ${esc(col.nome)}" style="all:unset;cursor:pointer;font-weight:inherit;white-space:nowrap">${esc(col.nome)} ${ativa ? (ordemLista.crescente ? '▲' : '▼') : '<span class="mudo">↕</span>'}</button></th>`;
+  }).join('');
   const escopo = ehRede(u) ? 'todos os chamados da rede' : u.perfil === 'Gerente' ? 'chamados das suas unidades' : 'chamados que você abriu ou dos quais é responsável';
   moldura('chamados', `
     <div class="cabecalho-pagina"><div><h1>Chamados</h1><p class="mudo">Você vê ${escopo}.</p></div><div class="acoes"><button class="botao secundario" id="b-atualizar">Atualizar</button><a class="botao" href="#/novo">＋ Novo chamado</a></div></div>
     <div class="filtros">
-      <div class="campo"><label for="f-st">Situação</label><select id="f-st">${opcoes([{ id: 'pendentes', nome: 'Pendentes' }, { id: 'fila', nome: 'Fila do Escritório (sem responsável)' }, { id: 'vencidos', nome: 'EM ATRASO' }, ...STATUS.map((s) => ({ id: s, nome: s })), { id: '', nome: 'Todas' }], filtroLista.status)}</select></div>
+      <div class="campo"><label for="f-st">Situação</label><select id="f-st">${opcoes([{ id: 'pendentes', nome: 'Todos, exceto fechados' }, { id: 'fila', nome: 'Fila do Escritório (sem responsável)' }, { id: 'vencidos', nome: 'EM ATRASO' }, ...STATUS.map((s) => ({ id: s, nome: s })), { id: '', nome: 'Todas' }], filtroLista.status)}</select></div>
       <div class="campo"><label for="f-un">Unidade</label><select id="f-un"><option value="">Todas</option>${opcoes(unidadesDo(u).map(unidade), filtroLista.unidade)}</select></div>
       <div class="campo"><label for="f-se">Setor</label><select id="f-se"><option value="">Todos</option>${opcoes(db.setores, filtroLista.setor)}</select></div>
       <div class="campo"><label for="f-pr">Prioridade</label><select id="f-pr"><option value="">Todas</option>${opcoes(PRIORIDADES, filtroLista.prioridade)}</select></div>
@@ -447,13 +462,19 @@ function telaChamados() {
     </div>
     <p class="mudo pequeno">${fmtNum(lista.length)} chamado(s)</p>
     ${lista.length ? `
-    <div class="tabela-rolagem so-desktop"><table><thead><tr><th>Nº</th><th>Título</th><th>Unidade</th><th>Setor</th><th>Prioridade</th><th>Status</th><th>Aberto em</th><th>Prazo</th><th>Responsável</th></tr></thead><tbody>
+    <div class="tabela-rolagem so-desktop"><table><thead><tr>${cab}</tr></thead><tbody>
       ${lista.map((c) => `<tr class="clicavel" data-id="${c.id}"><td>${numeroChamado(c)}</td><td>${esc(c.titulo)}</td><td>${esc(nomeUnidade(c.unidade))}</td><td>${esc(nomeSetor(c.setor))}</td><td>${seloPrior(c.prioridade)}</td><td>${seloStatus(c.status)} ${seloVencido(c)} ${seloTipo(c)}</td><td>${fmtDataHora(c.abertoEm)}</td><td>${c.status === 'Fechado' ? '—' : fmtDataHora(c.prazoEm)}</td><td>${esc(nomeUsuario(c.responsavel))}</td></tr>`).join('')}
     </tbody></table></div>
     <div class="lista-cartoes">${lista.map((c) => `<a class="item-chamado" href="#/chamado/${c.id}"><strong>${numeroChamado(c)} · ${esc(c.titulo)}</strong><span class="mudo pequeno">${esc(nomeUnidade(c.unidade))} · ${esc(nomeSetor(c.setor))} · ${fmtDataHora(c.abertoEm)}</span><div class="linha">${seloPrior(c.prioridade)}${seloStatus(c.status)}${seloVencido(c)}${seloTipo(c)}</div></a>`).join('')}</div>`
       : '<div class="vazio">Nenhum chamado com esses filtros.</div>'}`);
   const liga = (id, k) => { $(id).onchange = (e) => { filtroLista[k] = e.target.value; telaChamados(); }; };
   liga('#f-st', 'status'); liga('#f-un', 'unidade'); liga('#f-se', 'setor'); liga('#f-pr', 'prioridade');
+  $$('[data-ordem]').forEach((b) => b.onclick = () => {
+    const col = b.dataset.ordem;
+    if (ordemLista.coluna === col) ordemLista.crescente = !ordemLista.crescente;
+    else { ordemLista.coluna = col; ordemLista.crescente = true; }
+    telaChamados();
+  });
   $('#f-bu').oninput = (e) => { filtroLista.busca = e.target.value; clearTimeout(telaChamados._t); telaChamados._t = setTimeout(() => { telaChamados(); const el = $('#f-bu'); el.focus(); el.setSelectionRange(el.value.length, el.value.length); }, 250); };
   $$('tr[data-id]').forEach((tr) => tr.onclick = () => { location.hash = '#/chamado/' + tr.dataset.id; });
   $('#b-atualizar').onclick = async () => { try { await recarregar('Atualizando…'); telaChamados(); } catch (e) { aviso(e.message, true); } };
@@ -469,9 +490,10 @@ function telaNovo() {
     return;
   }
   const rede = ehRede(u);
+  let ehRecorrente = false; // botão "Chamado Recorrente" (só Escritorio/Diretoria)
   moldura('novo', `
     <div class="cabecalho-pagina"><div><h1>Novo chamado</h1><p class="mudo">${rede
-      ? 'Abra para a fila do Escritório ou direto para um gerente/frentista (único ou recorrente). Quem recebe responde, dá andamento e fecha com foto.'
+      ? 'Abra para a fila do Escritório ou direto para gerentes/frentistas (um, um grupo ou todos). Quem recebe responde, dá andamento e fecha com foto ou anexo.'
       : 'Você mesmo classifica o chamado. Ele entra na fila do Escritório, que trata ou redireciona. Toda reclassificação fica no histórico.'}</p></div></div>
     <form id="form-novo" class="cartao" novalidate style="max-width:760px">
       <div class="grade grade-3">
@@ -479,52 +501,68 @@ function telaNovo() {
         <div class="campo"><label for="n-set">Setor <span class="obrig">*</span></label><select id="n-set" required><option value="">Selecione</option>${opcoes(db.setores)}</select></div>
         <div class="campo"><label for="n-pri">Prioridade <span class="obrig">*</span></label><select id="n-pri" required><option value="">Selecione</option>${opcoes(PRIORIDADES)}</select></div>
       </div>
-      ${rede ? `<div class="grade grade-2">
-        <div class="campo"><label for="n-para">Para quem</label><select id="n-para"></select></div>
-        <div class="campo"><label for="n-tipo">Tipo</label><select id="n-tipo"><option value="unico">Chamado único</option><option value="rec">Chamado recorrente</option></select></div>
-      </div>
+      ${rede ? `<div class="campo"><label for="n-para">Para quem</label><select id="n-para"></select>
+        <span class="pequeno mudo" id="n-para-info"></span></div>
+      <div class="campo"><button type="button" class="botao secundario" id="n-rec-botao" aria-pressed="false">↻ Chamado Recorrente</button>
+        <span class="pequeno mudo" id="n-rec-dica"> Escolha antes “Para quem”.</span></div>
       <div class="grade grade-3" id="n-rec" hidden>
         <div class="campo"><label for="n-per">Periodicidade <span class="obrig">*</span></label><select id="n-per"><option value="">Selecione</option>${opcoes(PERIODICIDADES)}</select></div>
         <div class="campo"><label for="n-ini">Primeira ocorrência <span class="obrig">*</span></label><input type="date" id="n-ini"></div>
         <div class="campo"><label for="n-fim">Fim da recorrência <span class="obrig">*</span></label><input type="date" id="n-fim"></div>
       </div>
-      <p class="mudo pequeno" id="n-rec-info" hidden>Cada ocorrência vira um chamado separado (selo “Recorrência”), aberto automaticamente 3 dias antes da data programada (diária: no início do dia). Vence às 23:59 da data programada.</p>` : ''}
+      <p class="mudo pequeno" id="n-rec-info" hidden>Cada ocorrência vira um chamado separado (selo “Recorrência”), aberto automaticamente 3 dias antes da data programada (diária: no início do dia). Vence às 23:59 da data programada; se cair em fim de semana ou feriado, no 1º dia útil seguinte.</p>` : ''}
       <p class="mudo pequeno" id="n-prazo"></p>
       <div class="campo"><label for="n-tit">Título <span class="obrig">*</span></label><input type="text" id="n-tit" maxlength="80" placeholder="Ex.: Bomba 03 com vazamento" required></div>
       <div class="campo"><label for="n-desc">Descrição do problema <span class="obrig">*</span></label><textarea id="n-desc" required placeholder="O que aconteceu, onde, desde quando"></textarea></div>
-      ${campoFotos('n-fotos', 'Foto da abertura')}
+      ${campoFotos('n-fotos', 'Fotos e anexos da abertura')}
       <div class="erro-campo" id="n-erro" style="margin-bottom:10px"></div>
       <div class="acoes"><button class="botao" id="n-enviar">Abrir chamado</button><a class="botao secundario" href="#/chamados">Cancelar</a></div>
     </form>`);
-  ligarFotos('n-fotos', fotos);
-  const recorrente = () => rede && $('#n-tipo').value === 'rec';
+  ligarAnexos('n-fotos', fotos);
+  const recorrente = () => rede && ehRecorrente;
   const textoPrazo = () => {
     const p = $('#n-pri').value;
-    $('#n-prazo').textContent = !p ? '' : recorrente() ? 'Prazo: até 23:59 da data programada de cada ocorrência.'
-      : `Prazo para finalizar: ${PRAZO_HORAS[p]} h. Depois disso o chamado fica EM ATRASO.`;
+    $('#n-prazo').textContent = !p ? '' : recorrente() ? 'Prazo: até 23:59 da data programada de cada ocorrência (fim de semana/feriado: 1º dia útil seguinte).'
+      : `Prazo para finalizar: ${PRAZO_HORAS[p]} h úteis (sábados, domingos e feriados nacionais não contam). Depois disso o chamado fica EM ATRASO.`;
   };
   $('#n-pri').onchange = textoPrazo;
   if (rede) {
-    // destinatários: gerentes e frentistas da unidade escolhida
+    const pessoas = (filtro) => db.usuarios.filter(filtro).length;
+    // "Para quem": fila, grupos (todos os gerentes, todos os frentistas, frentistas de uma unidade) e pessoas da unidade escolhida
     const montarPara = () => {
       const uni = $('#n-uni').value, atual = $('#n-para').value;
       const lista = db.usuarios.filter((x) => PERFIS_DESTINO.includes(x.perfil) && (!uni || x.unidades.includes(uni)))
         .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')).map((x) => ({ id: x.id, nome: `${x.nome} (${x.perfil})` }));
-      $('#n-para').innerHTML = '<option value="">Fila do Escritório (chamado normal)</option>' + opcoes(lista, atual);
+      const grupos = [
+        { id: 'grupo:gerentes', nome: `Todos os gerentes – todas as unidades (${pessoas((x) => x.perfil === 'Gerente')})` },
+        { id: 'grupo:frentistas', nome: `Todos os frentistas – todas as unidades (${pessoas((x) => x.perfil === 'Frentista')})` },
+        ...db.unidades.map((un) => ({ id: 'grupo:frentistas:' + un.id, nome: `Todos os frentistas – ${un.nome} (${pessoas((x) => x.perfil === 'Frentista' && x.unidades.includes(un.id))})` })),
+      ];
+      $('#n-para').innerHTML = '<option value="">Fila do Escritório (chamado normal)</option>'
+        + `<optgroup label="Grupos (um chamado para cada pessoa)">${opcoes(grupos, atual)}</optgroup>`
+        + `<optgroup label="${uni ? 'Pessoas de ' + esc(nomeUnidade(uni)) : 'Pessoas (escolha a unidade para filtrar)'}">${opcoes(lista, atual)}</optgroup>`;
       atualizarFormulario();
     };
     const atualizarFormulario = () => {
       const para = $('#n-para').value;
-      if (!para) $('#n-tipo').value = 'unico';
-      $('#n-tipo').disabled = !para;
+      const todos = para === 'grupo:gerentes' || para === 'grupo:frentistas';
+      if (para.startsWith('grupo:frentistas:')) { $('#n-uni').value = para.slice('grupo:frentistas:'.length); }
+      $('#n-uni').disabled = todos; // "todos" vale para todas as unidades: a unidade sai de cada pessoa
+      $('#n-para-info').textContent = todos ? 'A unidade de cada chamado será a da própria pessoa.' : para.startsWith('grupo:') ? 'Cada pessoa do grupo recebe um chamado separado.' : '';
+      if (!para) ehRecorrente = false;
+      $('#n-rec-botao').disabled = !para;
+      $('#n-rec-dica').hidden = !!para;
+      $('#n-rec-botao').setAttribute('aria-pressed', String(ehRecorrente));
+      $('#n-rec-botao').className = 'botao ' + (ehRecorrente ? '' : 'secundario');
+      $('#n-rec-botao').textContent = ehRecorrente ? '↻ Chamado Recorrente: SIM' : '↻ Chamado Recorrente';
       $('#n-rec').hidden = !recorrente(); $('#n-rec-info').hidden = !recorrente();
-      // foto da abertura: obrigatória só no chamado normal
+      // foto/anexo da abertura: obrigatório só no chamado normal
       $('#n-fotos').closest('.campo').querySelector('.obrig').hidden = !!para;
       textoPrazo();
     };
     $('#n-uni').addEventListener('change', montarPara);
     $('#n-para').onchange = atualizarFormulario;
-    $('#n-tipo').onchange = atualizarFormulario;
+    $('#n-rec-botao').onclick = () => { ehRecorrente = !ehRecorrente; atualizarFormulario(); };
     const hoje = new Date(); $('#n-ini').min = $('#n-fim').min = `${hoje.getFullYear()}-${dois(hoje.getMonth() + 1)}-${dois(hoje.getDate())}`;
     montarPara();
   }
@@ -532,22 +570,26 @@ function telaNovo() {
     ev.preventDefault();
     const dados = { unidade: $('#n-uni').value, setor: $('#n-set').value, prioridade: $('#n-pri').value, titulo: $('#n-tit').value.trim(), descricao: $('#n-desc').value.trim() };
     if (rede && $('#n-para').value) dados.para = $('#n-para').value;
+    const todos = dados.para === 'grupo:gerentes' || dados.para === 'grupo:frentistas';
+    if (todos) dados.unidade = '';
     const rec = recorrente();
     if (rec) Object.assign(dados, { periodicidade: $('#n-per').value, inicio: $('#n-ini').value, fim: $('#n-fim').value });
     const faltam = [];
-    if (!dados.unidade) faltam.push('unidade'); if (!dados.setor) faltam.push('setor'); if (!dados.prioridade) faltam.push('prioridade');
+    if (!dados.unidade && !todos) faltam.push('unidade'); if (!dados.setor) faltam.push('setor'); if (!dados.prioridade) faltam.push('prioridade');
     if (!dados.titulo) faltam.push('título'); if (!dados.descricao) faltam.push('descrição');
     if (rec) { if (!dados.periodicidade) faltam.push('periodicidade'); if (!dados.inicio) faltam.push('primeira ocorrência'); if (!dados.fim) faltam.push('fim da recorrência'); }
-    if (!dados.para && !fotos.length) { faltam.push('foto'); $('#n-fotos-erro').textContent = 'Trava: nenhum chamado é aberto sem foto.'; }
+    if (!dados.para && !fotos.length) { faltam.push('foto ou anexo'); $('#n-fotos-erro').textContent = 'Trava: nenhum chamado é aberto sem foto ou anexo.'; }
     if (faltam.length) { $('#n-erro').textContent = 'Preencha: ' + faltam.join(', ') + '.'; return; }
     if (rec && dados.fim < dados.inicio) { $('#n-erro').textContent = 'O fim da recorrência deve ser igual ou depois da primeira ocorrência.'; return; }
     $('#n-enviar').disabled = true;
+    const envio = { chamado: dados, fotos: paraEnvio(fotos) };
     const r = rec
-      ? await executar('abrirRecorrente', { chamado: dados, fotos }, null, (res) => {
-        aviso(`Recorrência criada: ${res.total} ocorrência(s). ${res.abertos ? res.abertos + ' já aberta(s) agora.' : 'A primeira abre automaticamente perto da data.'}`);
+      ? await executar('abrirRecorrente', envio, null, (res) => {
+        aviso(`Recorrência criada${res.pessoas > 1 ? ` para ${res.pessoas} pessoas` : ''}: ${res.total} ocorrência(s). ${res.abertos ? res.abertos + ' chamado(s) já aberto(s) agora.' : 'A primeira abre automaticamente perto da data.'}`);
         location.hash = '#/chamados';
       })
-      : await executar('abrir', { chamado: dados, fotos }, null, (res) => {
+      : await executar('abrir', envio, null, (res) => {
+        if (res.total > 1) { aviso(`${res.total} chamados abertos, um para cada pessoa do grupo.`); location.hash = '#/chamados'; return; }
         aviso(`Chamado ${'#' + String(res.numero).padStart(4, '0')} aberto${dados.para ? ' para ' + nomeUsuario(dados.para) : ' e enviado à fila do Escritório'}.`);
         location.hash = '#/chamado/' + res.id;
       });
@@ -589,8 +631,8 @@ function telaDetalhe(id) {
           ${c.status === 'Fechado' ? `<div><dt>Fechado por</dt><dd>${esc(nomeUsuario(c.fechadoPor))}</dd></div><div><dt>Fechado em</dt><dd>${fmtDataHora(c.fechadoEm)} (${fmtDuracao(horasResolucao(c))})</dd></div>` : ''}
         </dl>
         <h3 style="margin-top:14px">Descrição do problema</h3><p class="texto-livre">${esc(c.descricao)}</p>
-        <h3>Fotos da abertura</h3>${miniaturas(c.fotosAbertura)}
-        ${c.status === 'Fechado' ? `<h3 style="margin-top:14px">Solução · ${esc(c.resultado)}</h3><p class="texto-livre">${esc(c.solucao)}</p><h3>Fotos do fechamento</h3>${miniaturas(c.fotosFechamento)}` : ''}
+        <h3>Fotos e anexos da abertura</h3>${miniaturas(c.fotosAbertura)}
+        ${c.status === 'Fechado' ? `<h3 style="margin-top:14px">Solução · ${esc(c.resultado)}</h3><p class="texto-livre">${esc(c.solucao)}</p><h3>Fotos e anexos do fechamento</h3>${miniaturas(c.fotosFechamento)}` : ''}
       </section>
       <div class="grade">
         ${andar ? `<section class="cartao"><h2>Andamento</h2><form id="form-and" novalidate>
@@ -644,8 +686,7 @@ function ligarBaixarAnexos() {
   $$('[data-anexo-id]').forEach((b) => b.onclick = async () => {
     try {
       const r = await api('foto', { fotoId: b.dataset.anexoId }, { texto: 'Baixando…' });
-      const a = document.createElement('a'); a.href = r.dataUrl; a.download = b.dataset.anexoNome || r.nome || 'anexo';
-      document.body.appendChild(a); a.click(); a.remove();
+      baixar(r.dataUrl, b.dataset.anexoNome || r.nome);
     } catch (e) { aviso(e.message, true); }
   });
 }
@@ -655,7 +696,7 @@ function lerArquivo(arq) {
     const l = new FileReader(); l.onerror = () => falha(new Error('Não foi possível ler o arquivo.')); l.onload = () => ok(l.result); l.readAsDataURL(arq);
   });
 }
-/** Campo de anexos do comentário: botão de foto (abre a câmera) e de arquivo (PDF, planilha etc.). */
+/** Campo de fotos/anexos (abertura, fechamento e comentário): botão de foto (abre a câmera) e de arquivo (PDF, planilha etc.). */
 function ligarAnexos(idCampo, lista) {
   const caixa = document.getElementById(idCampo);
   const desenhar = () => {
@@ -671,6 +712,7 @@ function ligarAnexos(idCampo, lista) {
         } catch (e) { aviso(e.message, true); }
       }
       desenhar();
+      const erro = document.getElementById(idCampo + '-erro'); if (erro) erro.textContent = '';
     }));
   };
   desenhar();
@@ -699,17 +741,17 @@ function janelaFechar(c) {
   abrirJanela(`Fechar ${numeroChamado(c)}`, `
     <div class="campo"><label for="f-sol">Descrição da solução <span class="obrig">*</span></label><textarea id="f-sol" placeholder="O que foi feito"></textarea></div>
     <div class="campo"><label for="f-res">Resultado final <span class="obrig">*</span></label><select id="f-res"><option value="">Selecione</option>${opcoes(RESULTADOS)}</select></div>
-    ${campoFotos('f-fotos', 'Foto do fechamento')}
+    ${campoFotos('f-fotos', 'Fotos e anexos do fechamento')}
     <div class="erro-campo" id="f-erro"></div>`, {
     textoOk: 'Fechar chamado',
-    aoAbrir: () => ligarFotos('f-fotos', fotos),
+    aoAbrir: () => ligarAnexos('f-fotos', fotos),
     aoConfirmar: async () => {
       const sol = $('#f-sol').value.trim(), res = $('#f-res').value;
       const faltam = [];
       if (!sol) faltam.push('descrição da solução'); if (!res) faltam.push('resultado final');
-      if (!fotos.length) { faltam.push('foto'); $('#f-fotos-erro').textContent = 'Trava: nenhum chamado é fechado sem foto.'; }
+      if (!fotos.length) { faltam.push('foto ou anexo'); $('#f-fotos-erro').textContent = 'Trava: nenhum chamado é fechado sem foto ou anexo.'; }
       if (faltam.length) { $('#f-erro').textContent = 'Preencha: ' + faltam.join(', ') + '.'; return false; }
-      const r = await executar('fechar', { id: c.id, solucao: sol, resultado: res, fotos }, `Chamado ${numeroChamado(c)} fechado.`, () => telaDetalhe(c.id));
+      const r = await executar('fechar', { id: c.id, solucao: sol, resultado: res, fotos: paraEnvio(fotos) }, `Chamado ${numeroChamado(c)} fechado.`, () => telaDetalhe(c.id));
       return r !== false;
     },
   });
