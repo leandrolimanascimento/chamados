@@ -523,6 +523,10 @@ function telaNovo() {
       <div class="acoes"><button class="botao" id="n-enviar">Abrir chamado</button><a class="botao secundario" href="#/chamados">Cancelar</a></div>
     </form>`);
   ligarAnexos('n-fotos', fotos);
+  if (rede) { // Escritorio/Diretoria abrem sem foto (decidido em 16/11/2026)
+    $('#n-fotos').closest('.campo').querySelector('.obrig').hidden = true;
+    $('#n-fotos').closest('.campo').querySelector('.pequeno.mudo').textContent = `Opcional para Escritório e Diretoria (até ${MAX_FOTOS} itens, 5 MB cada). “Foto” abre a câmera no celular; “Arquivo” aceita PDF, planilha ou qualquer outro tipo.`;
+  }
   const recorrente = () => rede && ehRecorrente;
   const textoPrazo = () => {
     const p = $('#n-pri').value;
@@ -572,7 +576,7 @@ function telaNovo() {
       $('#n-rec-botao').textContent = ehRecorrente ? '↻ Chamado Recorrente: SIM' : '↻ Chamado Recorrente';
       $('#n-rec').hidden = !recorrente(); $('#n-rec-info').hidden = !recorrente();
       // foto/anexo da abertura: obrigatório só no chamado normal
-      $('#n-fotos').closest('.campo').querySelector('.obrig').hidden = !!para;
+      $('#n-fotos').closest('.campo').querySelector('.obrig').hidden = true; // Escritorio/Diretoria: foto/anexo opcional
       textoPrazo();
     };
     $('#n-para').onchange = atualizarFormulario;
@@ -593,7 +597,7 @@ function telaNovo() {
     else if (!dados.unidade && !todos) faltam.push('unidade'); if (!dados.setor) faltam.push('setor'); if (!dados.prioridade) faltam.push('prioridade');
     if (!dados.titulo) faltam.push('título'); if (!dados.descricao) faltam.push('descrição');
     if (rec) { if (!dados.periodicidade) faltam.push('periodicidade'); if (!dados.inicio) faltam.push('primeira ocorrência'); if (!dados.fim) faltam.push('fim da recorrência'); }
-    if (!dados.para && !fotos.length) { faltam.push('foto ou anexo'); $('#n-fotos-erro').textContent = 'Trava: nenhum chamado é aberto sem foto ou anexo.'; }
+    if (!rede && !fotos.length) { faltam.push('foto ou anexo'); $('#n-fotos-erro').textContent = 'Trava: nenhum chamado é aberto sem foto ou anexo.'; }
     if (faltam.length) { $('#n-erro').textContent = 'Preencha: ' + faltam.join(', ') + '.'; return; }
     if (rec && dados.fim < dados.inicio) { $('#n-erro').textContent = 'O fim da recorrência deve ser igual ou depois da primeira ocorrência.'; return; }
     $('#n-enviar').disabled = true;
