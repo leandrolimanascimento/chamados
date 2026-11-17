@@ -85,6 +85,9 @@ img { max-width: 100%; }
 .menu a:hover { background: var(--verde-agua-40); }
 .menu a.ativo { background: var(--verde-pescador); color: #fff; font-weight: 700; }
 .menu svg { width: 20px; height: 20px; flex: none; }
+/* submenu (ex.: Recorrentes abaixo de Chamados) */
+.menu a.sub { margin-left: 22px; padding: 7px 12px; font-size: .92rem; }
+.menu a.sub svg { width: 16px; height: 16px; }
 .conteudo { padding: 20px 24px 40px; min-width: 0; max-width: 1200px; }
 .rodape { color: var(--cinza-texto); font-size: .78rem; padding: 12px 24px 90px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 
@@ -95,6 +98,7 @@ img { max-width: 100%; }
     display: flex; justify-content: space-around; padding: 4px 4px calc(4px + env(safe-area-inset-bottom));
   }
   .menu a { flex-direction: column; gap: 2px; font-size: .68rem; padding: 6px 4px; margin: 0; flex: 1; text-align: center; }
+  .menu a.sub { display: none; } /* no celular, Recorrentes fica num botão da tela Chamados */
   .conteudo { padding: 16px 16px 24px; }
   .topo .logo { width: 104px; }
   .topo .titulo strong { font-size: .95rem; }

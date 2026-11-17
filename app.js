@@ -209,6 +209,7 @@ const ICONES = {
   novo: '<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>',
   relatorios: '<path d="M5 20V10M12 20V4M19 20v-7"/>',
   notificacoes: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
+  recorrentes: '<path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/>',
   cadastros: '<circle cx="9" cy="8" r="3.5"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M21 20c0-2.5-1.4-4.6-3.5-5.5"/>',
 };
 const icone = (n) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONES[n]}</svg>`;
@@ -221,6 +222,8 @@ function moldura(rota, html) {
   const itens = [
     podeVerPainel(u) && ['#/painel', 'painel', 'Dashboard', 'painel'],
     ['#/chamados', 'chamados', 'Chamados', 'chamados'],
+    // submenu "Recorrentes", logo abaixo de Chamados (só Escritorio/Diretoria; no celular o acesso é pela tela Chamados)
+    ehRede(u) && ['#/recorrencias', 'recorrencias', 'Recorrentes', 'recorrentes', 'sub'],
     ['#/novo', 'novo', 'Novo chamado', 'novo'],
     podeVerPainel(u) && ['#/relatorios', 'relatorios', 'Relatórios', 'relatorios'],
     ehRede(u) && ['#/notificacoes', 'notificacoes', 'Notificações', 'notificacoes'],
@@ -233,7 +236,7 @@ function moldura(rota, html) {
       <a class="sair" href="#/senha" title="Trocar senha">Senha</a>
       <button class="sair" id="sair" title="Sair">Sair</button></header>
     <div class="casca">
-      <nav class="menu" aria-label="Menu principal">${itens.map(([h, chave, t, ic]) => `<a href="${h}" class="${rota === chave ? 'ativo' : ''}">${icone(ic)}<span>${t}</span></a>`).join('')}</nav>
+      <nav class="menu" aria-label="Menu principal">${itens.map(([h, chave, t, ic, sub]) => `<a href="${h}" class="${[rota === chave ? 'ativo' : '', sub || ''].join(' ').trim()}">${icone(ic)}<span>${t}</span></a>`).join('')}</nav>
       <div><main class="conteudo">${html}</main>
       <footer class="rodape"><span>Posto do Pescador – Rede · Chamados</span><span>${db.modoEnvio === 'real' ? '' : 'E-mails em modo ' + esc(db.modoEnvio)}</span></footer></div>
     </div>`;
@@ -452,7 +455,7 @@ function telaChamados() {
   }).join('');
   const escopo = ehRede(u) ? 'todos os chamados da rede' : u.perfil === 'Gerente' ? 'chamados das suas unidades' : 'chamados que você abriu ou dos quais é responsável';
   moldura('chamados', `
-    <div class="cabecalho-pagina"><div><h1>Chamados</h1><p class="mudo">Você vê ${escopo}.</p></div><div class="acoes"><button class="botao secundario" id="b-atualizar">Atualizar</button><a class="botao" href="#/novo">＋ Novo chamado</a></div></div>
+    <div class="cabecalho-pagina"><div><h1>Chamados</h1><p class="mudo">Você vê ${escopo}.</p></div><div class="acoes"><button class="botao secundario" id="b-atualizar">Atualizar</button>${ehRede(u) ? '<a class="botao secundario" href="#/recorrencias">↻ Recorrentes</a>' : ''}<a class="botao" href="#/novo">＋ Novo chamado</a></div></div>
     <div class="filtros">
       <div class="campo"><label for="f-st">Situação</label><select id="f-st">${opcoes([{ id: 'pendentes', nome: 'Todos, exceto fechados' }, { id: 'fila', nome: 'Fila do Escritório (sem responsável)' }, { id: 'vencidos', nome: 'EM ATRASO' }, ...STATUS.map((s) => ({ id: s, nome: s })), { id: '', nome: 'Todas' }], filtroLista.status)}</select></div>
       <div class="campo"><label for="f-un">Unidade</label><select id="f-un"><option value="">Todas</option>${opcoes(unidadesDo(u).map(unidade), filtroLista.unidade)}</select></div>
@@ -637,7 +640,7 @@ function telaDetalhe(id) {
           <div><dt>Aberto por</dt><dd>${esc(nomeUsuario(c.abertoPor))}</dd></div>
           <div><dt>Aberto em</dt><dd>${fmtDataHora(c.abertoEm)}</dd></div>
           ${c.tipo === 'Recorrência' ? `<div><dt>Data programada</dt><dd>${esc(c.dataProgramada.split('-').reverse().join('/'))}</dd></div>
-          ${rec ? `<div><dt>Recorrência</dt><dd>${esc(rec.periodicidade)} · ${esc(rec.inicio.split('-').reverse().join('/'))} a ${esc(rec.fim.split('-').reverse().join('/'))}${rec.ativa ? '' : ' (encerrada)'}</dd></div>` : ''}` : ''}
+          ${rec ? `<div><dt>Recorrência</dt><dd>${ehRede(u) ? `<a href="#/recorrencia/${rec.id}">ver recorrência</a> · ` : ''}${esc(rec.periodicidade)} · ${esc(rec.inicio.split('-').reverse().join('/'))} a ${esc(rec.fim.split('-').reverse().join('/'))}${rec.ativa ? '' : ' (encerrada)'}</dd></div>` : ''}` : ''}
           <div><dt>Prazo</dt><dd>${fmtDataHora(c.prazoEm)}${vencido(c) ? ' · <strong style="color:var(--erro,#c0392b)">EM ATRASO</strong>' : ''}</dd></div>
           <div><dt>Responsável</dt><dd>${c.responsavel ? esc(nomeUsuario(c.responsavel)) : 'Fila do Escritório'}</dd></div>
           ${c.status === 'Fechado' ? `<div><dt>Fechado por</dt><dd>${esc(nomeUsuario(c.fechadoPor))}</dd></div><div><dt>Fechado em</dt><dd>${fmtDataHora(c.fechadoEm)} (${fmtDuracao(horasResolucao(c))})</dd></div>` : ''}
@@ -938,6 +941,149 @@ function formUsuario(id) {
   });
 }
 
+// ===================== Chamados recorrentes (só Escritorio/Diretoria) =====================
+const dataBR = (s) => (s ? s.split('-').reverse().join('/') : '—');
+function somarDiasISO(s, n) { const d = new Date(s + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
+const subsDe = (r) => db.chamados.filter((c) => c.recorrencia === r.id).sort((a, b) => (a.dataProgramada < b.dataProgramada ? -1 : 1));
+const situacaoRec = (r) => (r.ativa ? '<span class="selo st-andamento">Ativa</span>' : '<span class="selo st-fechado">Encerrada</span>');
+const filtroRec = { visao: 'recorrencias', situacao: 'pendentes', busca: '' };
+
+/** Todas as ocorrências: as já abertas (com o chamado) e as programadas (ainda não abertas, com a data em que abrem). */
+function todasOcorrencias() {
+  const lista = [];
+  (db.recorrencias || []).forEach((r) => {
+    subsDe(r).forEach((c) => lista.push({ data: c.dataProgramada, r, c }));
+    (r.proximas || []).forEach((dt) => lista.push({ data: dt, r, abre: somarDiasISO(dt, -(r.antecedencia || 0)) }));
+  });
+  return lista.sort((a, b) => (a.data < b.data ? -1 : a.data > b.data ? 1 : a.r.titulo.localeCompare(b.r.titulo, 'pt-BR')));
+}
+
+function telaRecorrencias() {
+  const u = sessao();
+  if (!ehRede(u)) { location.hash = '#/chamados'; return; }
+  const b = normaliza(filtroRec.busca);
+  const casa = (r) => !b || normaliza(`${r.titulo} ${nomeUsuario(r.para)} ${nomeUnidade(r.unidade)}`).includes(b);
+  const recs = (db.recorrencias || []).filter(casa).sort((a, b2) => (b2.ativa - a.ativa) || a.titulo.localeCompare(b2.titulo, 'pt-BR'));
+  const ocorr = todasOcorrencias().filter((o) => casa(o.r)).filter((o) => {
+    const s = filtroRec.situacao;
+    if (s === 'programadas') return !o.c;
+    if (s === 'abertas') return o.c && o.c.status !== 'Fechado';
+    if (s === 'fechadas') return o.c && o.c.status === 'Fechado';
+    if (s === 'pendentes') return !o.c || o.c.status !== 'Fechado';
+    return true;
+  });
+  const linhaRec = (r) => {
+    const subs = subsDe(r);
+    return `<tr class="clicavel" data-rec="${r.id}"><td><strong>${esc(r.titulo)}</strong></td><td>${esc(nomeUsuario(r.para))}</td><td>${esc(nomeUnidade(r.unidade))}</td>
+      <td>${esc(r.periodicidade)}</td><td>${dataBR(r.inicio)} a ${dataBR(r.fim)}</td><td class="num">${subs.length} / ${r.totalOcorrencias ?? '—'}</td>
+      <td>${r.proximas && r.proximas.length ? dataBR(r.proximas[0]) : '—'}</td><td>${situacaoRec(r)}</td></tr>`;
+  };
+  const linhaOc = (o) => `<tr class="clicavel" ${o.c ? `data-ch="${o.c.id}"` : `data-rec="${o.r.id}"`}><td>${dataBR(o.data)}</td><td>${esc(o.r.titulo)}</td>
+    <td>${esc(nomeUsuario(o.r.para))}</td><td>${esc(nomeUnidade(o.r.unidade))}</td><td>${esc(o.r.periodicidade)}</td>
+    <td>${o.c ? `${numeroChamado(o.c)} ${seloStatus(o.c.status)}${seloVencido(o.c)}` : `<span class="selo st-aguardando">Programada</span> <span class="pequeno mudo">abre em ${dataBR(o.abre)}</span>`}</td></tr>`;
+  moldura('recorrencias', `
+    <div class="cabecalho-pagina"><div><h1>Chamados recorrentes</h1><p class="mudo">Todas as recorrências e todas as ocorrências: as já abertas e as programadas, que o sistema abre sozinho (3 dias antes da data; diária, no próprio dia).</p></div>
+      <div class="acoes"><button class="botao secundario" id="b-atualizar">Atualizar</button><a class="botao" href="#/novo">＋ Novo recorrente</a></div></div>
+    <div class="filtros">
+      <div class="campo"><label for="r-visao">Ver</label><select id="r-visao">${opcoes([{ id: 'recorrencias', nome: 'Por recorrência' }, { id: 'ocorrencias', nome: 'Todas as ocorrências (abertas e programadas)' }], filtroRec.visao)}</select></div>
+      ${filtroRec.visao === 'ocorrencias' ? `<div class="campo"><label for="r-sit">Situação</label><select id="r-sit">${opcoes([{ id: 'pendentes', nome: 'Programadas e abertas (exceto fechadas)' }, { id: 'programadas', nome: 'Só programadas (ainda não abertas)' }, { id: 'abertas', nome: 'Só abertas' }, { id: 'fechadas', nome: 'Fechadas' }, { id: '', nome: 'Todas' }], filtroRec.situacao)}</select></div>` : ''}
+      <div class="campo"><label for="r-bu">Buscar</label><input type="search" id="r-bu" value="${esc(filtroRec.busca)}" placeholder="Título, pessoa ou unidade"></div>
+    </div>
+    ${filtroRec.visao === 'recorrencias'
+      ? `<p class="mudo pequeno">${fmtNum(recs.length)} recorrência(s)</p>${recs.length ? `<div class="tabela-rolagem"><table><thead><tr><th>Título</th><th>Para quem</th><th>Unidade</th><th>Periodicidade</th><th>Período</th><th class="num">Abertos / total</th><th>Próxima data</th><th>Situação</th></tr></thead><tbody>${recs.map(linhaRec).join('')}</tbody></table></div>` : '<div class="vazio">Nenhum chamado recorrente. Crie em Novo chamado → “Para quem” → botão “Chamado Recorrente”.</div>'}`
+      : `<p class="mudo pequeno">${fmtNum(ocorr.length)} ocorrência(s)</p>${ocorr.length ? `<div class="tabela-rolagem"><table><thead><tr><th>Data programada</th><th>Título</th><th>Para quem</th><th>Unidade</th><th>Periodicidade</th><th>Situação</th></tr></thead><tbody>${ocorr.map(linhaOc).join('')}</tbody></table></div>` : '<div class="vazio">Nenhuma ocorrência com esses filtros.</div>'}`}`);
+  $('#r-visao').onchange = (e) => { filtroRec.visao = e.target.value; telaRecorrencias(); };
+  if ($('#r-sit')) $('#r-sit').onchange = (e) => { filtroRec.situacao = e.target.value; telaRecorrencias(); };
+  $('#r-bu').oninput = (e) => { filtroRec.busca = e.target.value; clearTimeout(telaRecorrencias._t); telaRecorrencias._t = setTimeout(() => { telaRecorrencias(); const el = $('#r-bu'); el.focus(); el.setSelectionRange(el.value.length, el.value.length); }, 250); };
+  $$('tr[data-rec]').forEach((tr) => tr.onclick = () => { location.hash = '#/recorrencia/' + tr.dataset.rec; });
+  $$('tr[data-ch]').forEach((tr) => tr.onclick = () => { location.hash = '#/chamado/' + tr.dataset.ch; });
+  $('#b-atualizar').onclick = async () => { try { await recarregar('Atualizando…'); telaRecorrencias(); } catch (e) { aviso(e.message, true); } };
+}
+
+function telaRecorrencia(id) {
+  const u = sessao();
+  if (!ehRede(u)) { location.hash = '#/chamados'; return; }
+  const r = (db.recorrencias || []).find((x) => x.id === id);
+  if (!r) { moldura('recorrencias', '<p class="mudo"><a href="#/recorrencias">← Chamados recorrentes</a></p><div class="vazio">Recorrência não encontrada (pode ter sido apagada).</div>'); return; }
+  const subs = subsDe(r);
+  moldura('recorrencias', `
+    <div class="cabecalho-pagina"><div><p class="mudo"><a href="#/recorrencias">← Chamados recorrentes</a></p><h1>${esc(r.titulo)}</h1>
+      <div class="acoes">${situacaoRec(r)}${seloPrior(r.prioridade)}<span class="selo st-andamento">Recorrência</span></div></div>
+      <div class="acoes"><button class="botao secundario" id="b-editar">Editar</button><button class="botao secundario" id="b-apagar" style="color:var(--erro,#c0392b)">Apagar</button></div></div>
+    <div class="grade grade-2">
+      <section class="cartao"><h2>Dados</h2>
+        <dl class="info">
+          <div><dt>Para quem</dt><dd>${esc(nomeUsuario(r.para))}</dd></div>
+          <div><dt>Unidade</dt><dd>${esc(nomeUnidade(r.unidade))}</dd></div>
+          <div><dt>Setor</dt><dd>${esc(nomeSetor(r.setor))}</dd></div>
+          <div><dt>Periodicidade</dt><dd>${esc(r.periodicidade)}</dd></div>
+          <div><dt>Período</dt><dd>${dataBR(r.inicio)} a ${dataBR(r.fim)} · ${r.totalOcorrencias} ocorrência(s)</dd></div>
+          <div><dt>Abertura automática</dt><dd>${r.antecedencia ? `${r.antecedencia} dias antes da data programada` : 'no início do próprio dia'}</dd></div>
+          <div><dt>Criado por</dt><dd>${esc(nomeUsuario(r.criadoPor))} em ${fmtDataHora(r.criadoEm)}</dd></div>
+        </dl>
+        <h3 style="margin-top:14px">Descrição</h3><p class="texto-livre">${esc(r.descricao)}</p>
+        ${(r.fotos || []).length ? `<h3>Fotos e anexos</h3>${miniaturas(r.fotos)}` : ''}
+      </section>
+      <div class="grade">
+        <section class="cartao"><h2>Já abertos (${subs.length})</h2>
+          ${subs.length ? subs.slice().reverse().map((c) => `<a class="item-chamado" href="#/chamado/${c.id}"><strong>${numeroChamado(c)} · data ${dataBR(c.dataProgramada)}</strong><div class="linha">${seloStatus(c.status)}${seloVencido(c)}</div></a>`).join('') : '<p class="mudo">Nenhuma ocorrência aberta ainda.</p>'}
+        </section>
+        <section class="cartao"><h2>Programados – ainda não abertos (${(r.proximas || []).length})</h2>
+          ${(r.proximas || []).length ? `<ul class="pequeno" style="margin:0;padding-left:18px;max-height:320px;overflow:auto">${r.proximas.map((dt) => `<li>${dataBR(dt)} <span class="mudo">· abre em ${dataBR(somarDiasISO(dt, -(r.antecedencia || 0)))}</span></li>`).join('')}</ul>` : `<p class="mudo">${r.ativa ? 'Nenhuma.' : 'Recorrência encerrada: nada mais será aberto.'}</p>`}
+        </section>
+      </div>
+    </div>`);
+  $('#b-editar').onclick = () => janelaEditarRecorrencia(r);
+  $('#b-apagar').onclick = () => janelaApagarRecorrencia(r);
+}
+
+function janelaEditarRecorrencia(r) {
+  // pessoa@unidade, como no "Para quem" da abertura (só pessoas: grupo vira uma recorrência por pessoa já na criação)
+  const pessoas = db.usuarios.filter((x) => PERFIS_DESTINO.includes(x.perfil))
+    .flatMap((x) => x.unidades.filter((id) => unidade(id)).map((id) => ({ id: `${x.id}@${id}`, nome: `${x.nome} (${x.perfil} – ${nomeUnidade(id)})` })))
+    .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  abrirJanela('Editar chamado recorrente', `
+    <p class="mudo pequeno">As mudanças valem para as próximas ocorrências. Os chamados já abertos não mudam.</p>
+    <div class="campo"><label for="e-tit">Título</label><input type="text" id="e-tit" maxlength="80" value="${esc(r.titulo)}"></div>
+    <div class="campo"><label for="e-desc">Descrição</label><textarea id="e-desc">${esc(r.descricao)}</textarea></div>
+    <div class="campo"><label for="e-para">Para quem</label><select id="e-para">${opcoes(pessoas, `${r.para}@${r.unidade}`)}</select></div>
+    <div class="grade grade-2">
+      <div class="campo"><label for="e-set">Setor</label><select id="e-set">${opcoes(db.setores, r.setor)}</select></div>
+      <div class="campo"><label for="e-pri">Prioridade</label><select id="e-pri">${opcoes(PRIORIDADES, r.prioridade)}</select></div>
+      <div class="campo"><label for="e-per">Periodicidade</label><select id="e-per">${opcoes(PERIODICIDADES, r.periodicidade)}</select></div>
+      <div class="campo"><label for="e-ativa">Situação</label><select id="e-ativa">${opcoes([{ id: 'true', nome: 'Ativa' }, { id: 'false', nome: 'Encerrada (não abre mais)' }], String(r.ativa))}</select></div>
+      <div class="campo"><label for="e-ini">Primeira ocorrência</label><input type="date" id="e-ini" value="${esc(r.inicio)}"></div>
+      <div class="campo"><label for="e-fim">Fim da recorrência</label><input type="date" id="e-fim" value="${esc(r.fim)}"></div>
+    </div>`, {
+    textoOk: 'Salvar',
+    aoConfirmar: async () => {
+      const [para, uni] = $('#e-para').value.split('@');
+      const item = { id: r.id, titulo: $('#e-tit').value.trim(), descricao: $('#e-desc').value.trim(), para, unidade: uni, setor: $('#e-set').value,
+        prioridade: $('#e-pri').value, periodicidade: $('#e-per').value, inicio: $('#e-ini').value, fim: $('#e-fim').value, ativa: $('#e-ativa').value === 'true' };
+      const res = await executar('salvarRecorrencia', { item }, 'Recorrência salva.', (x) => { if (x.abertos) aviso(`Recorrência salva. ${x.abertos} ocorrência(s) aberta(s) agora.`); telaRecorrencia(r.id); });
+      return res !== false;
+    },
+  });
+}
+
+function janelaApagarRecorrencia(r) {
+  const subs = subsDe(r), abertos = subs.filter((c) => c.status !== 'Fechado');
+  abrirJanela('Apagar chamado recorrente', `
+    <p>Apagar a recorrência <strong>“${esc(r.titulo)}”</strong>? As ocorrências programadas deixam de existir e nada mais será aberto. Não dá para desfazer.</p>
+    <p class="pequeno mudo">Chamados já fechados desta recorrência (${subs.length - abertos.length}) ficam guardados no histórico.</p>
+    ${abertos.length ? `<label class="pequeno" style="display:flex;gap:8px;align-items:flex-start"><input type="checkbox" id="ap-abertos"> Apagar também os ${abertos.length} chamado(s) desta recorrência que ainda estão abertos (${abertos.map(numeroChamado).join(', ')}). Sem marcar, eles continuam valendo.</label>` : ''}`, {
+    textoOk: 'Apagar',
+    aoConfirmar: async () => {
+      const apagarAbertos = !!($('#ap-abertos') && $('#ap-abertos').checked);
+      const res = await executar('apagarRecorrencia', { id: r.id, apagarAbertos }, null, (x) => {
+        aviso(`Recorrência apagada.${x.apagados ? ` ${x.apagados} chamado(s) aberto(s) apagado(s).` : ''}${x.mantidos ? ` ${x.mantidos} chamado(s) mantido(s).` : ''}`);
+        location.hash = '#/recorrencias';
+      });
+      return res !== false;
+    },
+  });
+}
+
 // ===================== Roteador =====================
 async function rotear() {
   const [rota, param] = location.hash.replace(/^#\/?/, '').split('/');
@@ -960,6 +1106,8 @@ async function rotear() {
     case 'chamados': return telaChamados();
     case 'novo': return telaNovo();
     case 'chamado': return telaDetalhe(param);
+    case 'recorrencias': return telaRecorrencias();
+    case 'recorrencia': return telaRecorrencia(param);
     case 'relatorios': return telaRelatorios();
     case 'notificacoes': return telaNotificacoes();
     case 'cadastros': return telaCadastros(param);
