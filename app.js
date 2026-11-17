@@ -15,7 +15,7 @@ const PRIORIDADES = ['Normal', 'Alta', 'Baixa'];
 const PRAZO_HORAS = { 'Alta': 24, 'Normal': 48, 'Baixa': 72 }; // passou do prazo sem fechar = EM ATRASO
 const STATUS = ['Aberto', 'Em andamento', 'Aguardando terceiro', 'Fechado'];
 const RESULTADOS = ['Resolvido', 'Resolvido parcialmente', 'Não procede'];
-const PERIODICIDADES = ['Diária', 'Semanal', 'Mensal', 'Anual'];
+const PERIODICIDADES = ['Diária', 'Semanal', 'Quinzenal', 'Mensal', 'Anual'];
 const PERFIS_DESTINO = ['Gerente', 'Frentista'];
 const MAX_FOTOS = 5;
 const MAX_ANEXOS = 5;
@@ -496,15 +496,16 @@ function telaNovo() {
       ? 'Abra para a fila do Escritório ou direto para gerentes/frentistas (um, um grupo ou todos). Quem recebe responde, dá andamento e fecha com foto ou anexo.'
       : 'Você mesmo classifica o chamado. Ele entra na fila do Escritório, que trata ou redireciona. Toda reclassificação fica no histórico.'}</p></div></div>
     <form id="form-novo" class="cartao" novalidate style="max-width:760px">
-      <div class="grade grade-3">
-        <div class="campo"><label for="n-uni">Unidade <span class="obrig">*</span></label><select id="n-uni" required>${minhas.length > 1 ? '<option value="">Selecione</option>' : ''}${opcoes(minhas.map(unidade), minhas.length === 1 ? minhas[0] : '')}</select></div>
+      ${rede ? `<div class="campo"><label for="n-para">Para quem <span class="obrig">*</span></label><select id="n-para" required></select>
+        <span class="pequeno mudo" id="n-para-info"></span></div>` : ''}
+      <div class="grade ${rede ? 'grade-2' : 'grade-3'}">
+        ${rede ? '' : `<div class="campo"><label for="n-uni">Unidade <span class="obrig">*</span></label><select id="n-uni" required>${minhas.length > 1 ? '<option value="">Selecione</option>' : ''}${opcoes(minhas.map(unidade), minhas.length === 1 ? minhas[0] : '')}</select></div>`}
         <div class="campo"><label for="n-set">Setor <span class="obrig">*</span></label><select id="n-set" required><option value="">Selecione</option>${opcoes(db.setores)}</select></div>
         <div class="campo"><label for="n-pri">Prioridade <span class="obrig">*</span></label><select id="n-pri" required><option value="">Selecione</option>${opcoes(PRIORIDADES)}</select></div>
       </div>
-      ${rede ? `<div class="campo"><label for="n-para">Para quem</label><select id="n-para"></select>
-        <span class="pequeno mudo" id="n-para-info"></span></div>
+      ${rede ? `
       <div class="campo"><button type="button" class="botao secundario" id="n-rec-botao" aria-pressed="false">↻ Chamado Recorrente</button>
-        <span class="pequeno mudo" id="n-rec-dica"> Escolha antes “Para quem”.</span></div>
+        <span class="pequeno mudo" id="n-rec-dica"> Disponível ao escolher uma pessoa ou um grupo em “Para quem”.</span></div>
       <div class="grade grade-3" id="n-rec" hidden>
         <div class="campo"><label for="n-per">Periodicidade <span class="obrig">*</span></label><select id="n-per"><option value="">Selecione</option>${opcoes(PERIODICIDADES)}</select></div>
         <div class="campo"><label for="n-ini">Primeira ocorrência <span class="obrig">*</span></label><input type="date" id="n-ini"></div>
@@ -526,28 +527,39 @@ function telaNovo() {
       : `Prazo para finalizar: ${PRAZO_HORAS[p]} h úteis (sábados, domingos e feriados nacionais não contam). Depois disso o chamado fica EM ATRASO.`;
   };
   $('#n-pri').onchange = textoPrazo;
+  /**
+   * Escritorio/Diretoria não escolhem "Unidade": ela sai do "Para quem" (pedido de 16/11/2026).
+   * Valores: 'fila:<unidade>' (chamado normal), 'grupo:...' (um chamado por pessoa) ou '<usuário>@<unidade>'.
+   */
+  const lerPara = (v) => {
+    if (!v) return { unidade: '', para: '' };
+    if (v.startsWith('fila:')) return { unidade: v.slice(5), para: '' };
+    if (v === 'grupo:gerentes' || v === 'grupo:frentistas') return { unidade: '', para: v };
+    if (v.startsWith('grupo:frentistas:')) return { unidade: v.slice('grupo:frentistas:'.length), para: v };
+    const [id, uni] = v.split('@'); return { unidade: uni, para: id };
+  };
   if (rede) {
     const pessoas = (filtro) => db.usuarios.filter(filtro).length;
-    // "Para quem": fila, grupos (todos os gerentes, todos os frentistas, frentistas de uma unidade) e pessoas da unidade escolhida
     const montarPara = () => {
-      const uni = $('#n-uni').value, atual = $('#n-para').value;
-      const lista = db.usuarios.filter((x) => PERFIS_DESTINO.includes(x.perfil) && (!uni || x.unidades.includes(uni)))
-        .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')).map((x) => ({ id: x.id, nome: `${x.nome} (${x.perfil})` }));
+      const filas = db.unidades.map((un) => ({ id: 'fila:' + un.id, nome: `Fila do Escritório – ${un.nome}` }));
       const grupos = [
         { id: 'grupo:gerentes', nome: `Todos os gerentes – todas as unidades (${pessoas((x) => x.perfil === 'Gerente')})` },
         { id: 'grupo:frentistas', nome: `Todos os frentistas – todas as unidades (${pessoas((x) => x.perfil === 'Frentista')})` },
         ...db.unidades.map((un) => ({ id: 'grupo:frentistas:' + un.id, nome: `Todos os frentistas – ${un.nome} (${pessoas((x) => x.perfil === 'Frentista' && x.unidades.includes(un.id))})` })),
       ];
-      $('#n-para').innerHTML = '<option value="">Fila do Escritório (chamado normal)</option>'
-        + `<optgroup label="Grupos (um chamado para cada pessoa)">${opcoes(grupos, atual)}</optgroup>`
-        + `<optgroup label="${uni ? 'Pessoas de ' + esc(nomeUnidade(uni)) : 'Pessoas (escolha a unidade para filtrar)'}">${opcoes(lista, atual)}</optgroup>`;
+      // cada pessoa aparece com a unidade; quem atende mais de uma unidade aparece uma vez por unidade
+      const lista = db.usuarios.filter((x) => PERFIS_DESTINO.includes(x.perfil))
+        .flatMap((x) => x.unidades.filter((id) => unidade(id)).map((id) => ({ id: `${x.id}@${id}`, nome: `${x.nome} (${x.perfil} – ${nomeUnidade(id)})` })))
+        .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+      $('#n-para').innerHTML = '<option value="">Selecione</option>'
+        + `<optgroup label="Chamado normal (fila do Escritório)">${opcoes(filas)}</optgroup>`
+        + `<optgroup label="Grupos (um chamado para cada pessoa)">${opcoes(grupos)}</optgroup>`
+        + `<optgroup label="Uma pessoa">${opcoes(lista)}</optgroup>`;
       atualizarFormulario();
     };
     const atualizarFormulario = () => {
-      const para = $('#n-para').value;
+      const v = $('#n-para').value, para = lerPara(v).para;
       const todos = para === 'grupo:gerentes' || para === 'grupo:frentistas';
-      if (para.startsWith('grupo:frentistas:')) { $('#n-uni').value = para.slice('grupo:frentistas:'.length); }
-      $('#n-uni').disabled = todos; // "todos" vale para todas as unidades: a unidade sai de cada pessoa
       $('#n-para-info').textContent = todos ? 'A unidade de cada chamado será a da própria pessoa.' : para.startsWith('grupo:') ? 'Cada pessoa do grupo recebe um chamado separado.' : '';
       if (!para) ehRecorrente = false;
       $('#n-rec-botao').disabled = !para;
@@ -560,7 +572,6 @@ function telaNovo() {
       $('#n-fotos').closest('.campo').querySelector('.obrig').hidden = !!para;
       textoPrazo();
     };
-    $('#n-uni').addEventListener('change', montarPara);
     $('#n-para').onchange = atualizarFormulario;
     $('#n-rec-botao').onclick = () => { ehRecorrente = !ehRecorrente; atualizarFormulario(); };
     const hoje = new Date(); $('#n-ini').min = $('#n-fim').min = `${hoje.getFullYear()}-${dois(hoje.getMonth() + 1)}-${dois(hoje.getDate())}`;
@@ -568,14 +579,15 @@ function telaNovo() {
   }
   $('#form-novo').onsubmit = async (ev) => {
     ev.preventDefault();
-    const dados = { unidade: $('#n-uni').value, setor: $('#n-set').value, prioridade: $('#n-pri').value, titulo: $('#n-tit').value.trim(), descricao: $('#n-desc').value.trim() };
-    if (rede && $('#n-para').value) dados.para = $('#n-para').value;
+    const dados = { setor: $('#n-set').value, prioridade: $('#n-pri').value, titulo: $('#n-tit').value.trim(), descricao: $('#n-desc').value.trim() };
+    const escolhaPara = rede ? $('#n-para').value : '';
+    if (rede) { const p = lerPara(escolhaPara); dados.unidade = p.unidade; if (p.para) dados.para = p.para; } else dados.unidade = $('#n-uni').value;
     const todos = dados.para === 'grupo:gerentes' || dados.para === 'grupo:frentistas';
-    if (todos) dados.unidade = '';
     const rec = recorrente();
     if (rec) Object.assign(dados, { periodicidade: $('#n-per').value, inicio: $('#n-ini').value, fim: $('#n-fim').value });
     const faltam = [];
-    if (!dados.unidade && !todos) faltam.push('unidade'); if (!dados.setor) faltam.push('setor'); if (!dados.prioridade) faltam.push('prioridade');
+    if (rede && !escolhaPara) faltam.push('para quem');
+    else if (!dados.unidade && !todos) faltam.push('unidade'); if (!dados.setor) faltam.push('setor'); if (!dados.prioridade) faltam.push('prioridade');
     if (!dados.titulo) faltam.push('título'); if (!dados.descricao) faltam.push('descrição');
     if (rec) { if (!dados.periodicidade) faltam.push('periodicidade'); if (!dados.inicio) faltam.push('primeira ocorrência'); if (!dados.fim) faltam.push('fim da recorrência'); }
     if (!dados.para && !fotos.length) { faltam.push('foto ou anexo'); $('#n-fotos-erro').textContent = 'Trava: nenhum chamado é aberto sem foto ou anexo.'; }
