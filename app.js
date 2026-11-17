@@ -494,6 +494,8 @@ function telaNovo() {
   }
   const rede = ehRede(u);
   let ehRecorrente = false; // botão "Chamado Recorrente" (só Escritorio/Diretoria)
+  // Gerente → frentistas da unidade; Frentista → gerente da unidade (decidido em 16/11/2026)
+  const direcionaLocal = !rede && (u.perfil === 'Gerente' || u.perfil === 'Frentista');
   moldura('novo', `
     <div class="cabecalho-pagina"><div><h1>Novo chamado</h1><p class="mudo">${rede
       ? 'Abra para a fila do Escritório ou direto para gerentes/frentistas (um, um grupo ou todos). Quem recebe responde, dá andamento e fecha com foto ou anexo.'
@@ -506,6 +508,8 @@ function telaNovo() {
         <div class="campo"><label for="n-set">Setor <span class="obrig">*</span></label><select id="n-set" required><option value="">Selecione</option>${opcoes(db.setores)}</select></div>
         <div class="campo"><label for="n-pri">Prioridade <span class="obrig">*</span></label><select id="n-pri" required><option value="">Selecione</option>${opcoes(PRIORIDADES)}</select></div>
       </div>
+      ${direcionaLocal ? `<div class="campo"><label for="n-para-local">Para quem</label><select id="n-para-local"></select>
+        <span class="pequeno mudo">${u.perfil === 'Gerente' ? 'Você pode abrir direto para um frentista da sua unidade (ou todos).' : 'Você pode abrir direto para o gerente da sua unidade.'} Quem recebe responde, dá andamento e fecha com foto ou anexo.</span></div>` : ''}
       ${rede ? `
       <div class="campo"><button type="button" class="botao secundario" id="n-rec-botao" aria-pressed="false">↻ Chamado Recorrente</button>
         <span class="pequeno mudo" id="n-rec-dica"> Disponível ao escolher uma pessoa ou um grupo em “Para quem”.</span></div>
@@ -526,6 +530,18 @@ function telaNovo() {
   if (rede) { // Escritorio/Diretoria abrem sem foto (decidido em 16/11/2026)
     $('#n-fotos').closest('.campo').querySelector('.obrig').hidden = true;
     $('#n-fotos').closest('.campo').querySelector('.pequeno.mudo').textContent = `Opcional para Escritório e Diretoria (até ${MAX_FOTOS} itens, 5 MB cada). “Foto” abre a câmera no celular; “Arquivo” aceita PDF, planilha ou qualquer outro tipo.`;
+  }
+  if (direcionaLocal) {
+    const montarParaLocal = () => {
+      const uni = $('#n-uni').value, atual = $('#n-para-local').value;
+      const alvo = u.perfil === 'Gerente' ? 'Frentista' : 'Gerente';
+      const pessoas = uni ? db.usuarios.filter((x) => x.perfil === alvo && x.unidades.includes(uni) && x.id !== u.id).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')) : [];
+      const grupo = u.perfil === 'Gerente' && pessoas.length > 1 ? [{ id: 'grupo:frentistas:' + uni, nome: `Todos os frentistas de ${nomeUnidade(uni)} (${pessoas.length}) – um chamado para cada` }] : [];
+      $('#n-para-local').innerHTML = '<option value="">Fila do Escritório (chamado normal)</option>' + opcoes(grupo.concat(pessoas.map((x) => ({ id: x.id, nome: `${x.nome} (${x.perfil})` }))), atual)
+        + (uni && !pessoas.length ? `<option disabled>— nenhum ${alvo.toLowerCase()} cadastrado nesta unidade —</option>` : '');
+    };
+    $('#n-uni').addEventListener('change', montarParaLocal);
+    montarParaLocal();
   }
   const recorrente = () => rede && ehRecorrente;
   const textoPrazo = () => {
@@ -589,6 +605,7 @@ function telaNovo() {
     const dados = { setor: $('#n-set').value, prioridade: $('#n-pri').value, titulo: $('#n-tit').value.trim(), descricao: $('#n-desc').value.trim() };
     const escolhaPara = rede ? $('#n-para').value : '';
     if (rede) { const p = lerPara(escolhaPara); dados.unidade = p.unidade; if (p.para) dados.para = p.para; } else dados.unidade = $('#n-uni').value;
+    if (direcionaLocal && $('#n-para-local').value) dados.para = $('#n-para-local').value;
     const todos = dados.para === 'grupo:gerentes' || dados.para === 'grupo:frentistas';
     const rec = recorrente();
     if (rec) Object.assign(dados, { periodicidade: $('#n-per').value, inicio: $('#n-ini').value, fim: $('#n-fim').value });
