@@ -518,7 +518,7 @@ function telaNovo() {
         <div class="campo"><label for="n-ini">Primeira ocorrência <span class="obrig">*</span></label><input type="date" id="n-ini"></div>
         <div class="campo"><label for="n-fim">Fim da recorrência <span class="obrig">*</span></label><input type="date" id="n-fim"></div>
       </div>
-      <p class="mudo pequeno" id="n-rec-info" hidden>Cada ocorrência vira um chamado separado (selo “Recorrência”), aberto automaticamente 3 dias antes da data programada (diária: no início do dia). Vence às 23:59 da data programada; se cair em fim de semana ou feriado, no 1º dia útil seguinte.</p>` : ''}
+      <p class="mudo pequeno" id="n-rec-info" hidden>Cada ocorrência vira um chamado separado (selo “Recorrência”), aberto automaticamente no início do dia de cada data. O prazo conta pela prioridade a partir da abertura, em horas úteis (Alta 24 h, Normal 48 h, Baixa 72 h).</p>` : ''}
       <p class="mudo pequeno" id="n-prazo"></p>
       <div class="campo"><label for="n-tit">Título <span class="obrig">*</span></label><input type="text" id="n-tit" maxlength="80" placeholder="Ex.: Bomba 03 com vazamento" required></div>
       <div class="campo"><label for="n-desc">Descrição do problema <span class="obrig">*</span></label><textarea id="n-desc" required placeholder="O que aconteceu, onde, desde quando"></textarea></div>
@@ -546,7 +546,7 @@ function telaNovo() {
   const recorrente = () => rede && ehRecorrente;
   const textoPrazo = () => {
     const p = $('#n-pri').value;
-    $('#n-prazo').textContent = !p ? '' : recorrente() ? 'Prazo: até 23:59 da data programada de cada ocorrência (fim de semana/feriado: 1º dia útil seguinte).'
+    $('#n-prazo').textContent = !p ? '' : recorrente() ? `Cada ocorrência abre no início do dia da data e tem ${PRAZO_HORAS[p]} h úteis para ser finalizada (sábados, domingos e feriados não contam).`
       : `Prazo para finalizar: ${PRAZO_HORAS[p]} h úteis (sábados, domingos e feriados nacionais não contam). Depois disso o chamado fica EM ATRASO.`;
   };
   $('#n-pri').onchange = textoPrazo;
@@ -1003,7 +1003,7 @@ function telaRecorrencias() {
     <td>${esc(nomeUsuario(o.r.para))}</td><td>${esc(nomeUnidade(o.r.unidade))}</td><td>${esc(o.r.periodicidade)}</td>
     <td>${o.c ? `${numeroChamado(o.c)} ${seloStatus(o.c.status)}${seloVencido(o.c)}` : `<span class="selo st-aguardando">Programada</span> <span class="pequeno mudo">abre em ${dataBR(o.abre)}</span>`}</td></tr>`;
   moldura('recorrencias', `
-    <div class="cabecalho-pagina"><div><h1>Chamados recorrentes</h1><p class="mudo">Todas as recorrências e todas as ocorrências: as já abertas e as programadas, que o sistema abre sozinho (3 dias antes da data; diária, no próprio dia).</p></div>
+    <div class="cabecalho-pagina"><div><h1>Chamados recorrentes</h1><p class="mudo">Todas as recorrências e todas as ocorrências: as já abertas e as programadas, que o sistema abre sozinho no início do dia de cada data; o prazo conta pela prioridade a partir dela.</p></div>
       <div class="acoes"><button class="botao secundario" id="b-atualizar">Atualizar</button><a class="botao" href="#/novo">＋ Novo recorrente</a></div></div>
     <div class="filtros">
       <div class="campo"><label for="r-visao">Ver</label><select id="r-visao">${opcoes([{ id: 'recorrencias', nome: 'Por recorrência' }, { id: 'ocorrencias', nome: 'Todas as ocorrências (abertas e programadas)' }], filtroRec.visao)}</select></div>
@@ -1039,7 +1039,7 @@ function telaRecorrencia(id) {
           <div><dt>Setor</dt><dd>${esc(nomeSetor(r.setor))}</dd></div>
           <div><dt>Periodicidade</dt><dd>${esc(r.periodicidade)}</dd></div>
           <div><dt>Período</dt><dd>${dataBR(r.inicio)} a ${dataBR(r.fim)} · ${r.totalOcorrencias} ocorrência(s)</dd></div>
-          <div><dt>Abertura automática</dt><dd>${r.antecedencia ? `${r.antecedencia} dias antes da data programada` : 'no início do próprio dia'}</dd></div>
+          <div><dt>Abertura automática</dt><dd>${r.antecedencia ? `${r.antecedencia} dias antes da data programada` : 'no início do dia da data programada'} · prazo de ${PRAZO_HORAS[r.prioridade] || '—'} h úteis (${esc(r.prioridade)})</dd></div>
           <div><dt>Criado por</dt><dd>${esc(nomeUsuario(r.criadoPor))} em ${fmtDataHora(r.criadoEm)}</dd></div>
         </dl>
         <h3 style="margin-top:14px">Descrição</h3><p class="texto-livre">${esc(r.descricao)}</p>
