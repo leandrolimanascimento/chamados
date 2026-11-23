@@ -647,11 +647,12 @@ function telaDetalhe(id) {
   const fechar = podeFechar(u, c);
   const rec = c.recorrencia ? (db.recorrencias || []).find((r) => r.id === c.recorrencia) : null;
   const encerrarRec = rec && rec.ativa && ehRede(u);
+  const reabrir = c.status === 'Fechado' && ehRede(u); // 23/11/2026: Diretoria/Escritório reabrem chamado fechado por engano
   const anexos = [];
   moldura('chamados', `
     <div class="cabecalho-pagina"><div><p class="mudo"><a href="#/chamados">← Chamados</a></p><h1>${numeroChamado(c)} · ${esc(c.titulo)}</h1>
       <div class="acoes">${seloStatus(c.status)}${seloPrior(c.prioridade)}${seloVencido(c)}${seloTipo(c)}</div></div>
-      <div class="acoes">${encerrarRec ? '<button class="botao secundario" id="b-enc-rec">Encerrar recorrência</button>' : ''}${gerir ? '<button class="botao secundario" id="b-reclass">Reclassificar</button>' : ''}${fechar ? '<button class="botao" id="b-fechar">Fechar chamado</button>' : ''}</div></div>
+      <div class="acoes">${encerrarRec ? '<button class="botao secundario" id="b-enc-rec">Encerrar recorrência</button>' : ''}${gerir ? '<button class="botao secundario" id="b-reclass">Reclassificar</button>' : ''}${fechar ? '<button class="botao" id="b-fechar">Fechar chamado</button>' : ''}${reabrir ? '<button class="botao secundario" id="b-reabrir">↩ Reabrir chamado</button>' : ''}</div></div>
     <div class="grade grade-2">
       <section class="cartao">
         <h2>Dados</h2>
@@ -698,6 +699,7 @@ function telaDetalhe(id) {
   }
   if (gerir) $('#b-reclass').onclick = () => janelaReclassificar(c);
   if (fechar) $('#b-fechar').onclick = () => janelaFechar(c);
+  if (reabrir) $('#b-reabrir').onclick = () => janelaReabrir(c);
   if (encerrarRec) $('#b-enc-rec').onclick = () => confirmar(`Encerrar a recorrência “${rec.titulo}”? Nenhuma nova ocorrência será aberta. As que já foram abertas continuam valendo.`,
     async () => (await executar('encerrarRecorrencia', { id: rec.id }, 'Recorrência encerrada.', voltar)) !== false, 'Encerrar');
   ligarAnexos('c-anexos', anexos);
@@ -772,6 +774,23 @@ function janelaReclassificar(c) {
     aoConfirmar: async () => {
       const r = await executar('reclassificar', { id: c.id, unidade: $('#r-uni').value, setor: $('#r-set').value, prioridade: $('#r-pri').value, motivo: $('#r-mot').value.trim() },
         'Chamado reclassificado.', () => telaDetalhe(c.id));
+      return r !== false;
+    },
+  });
+}
+
+function janelaReabrir(c) {
+  // 23/11/2026: volta como "Aberto", com o mesmo responsável (pode trocar) e o PRAZO ORIGINAL; motivo obrigatório.
+  abrirJanela(`Reabrir ${numeroChamado(c)}`, `
+    <p class="mudo pequeno">Use quando o chamado foi fechado por engano. Ele volta como <strong>Aberto</strong>, com o prazo original${new Date(c.prazoEm) < new Date() ? ' (já vencido: vai aparecer EM ATRASO)' : ''}. A solução e as fotos do fechamento ficam guardadas nos comentários. Quem abriu, o responsável e quem fechou são avisados.</p>
+    <div class="campo"><label for="ra-mot">Motivo da reabertura <span class="obrig">*</span></label><textarea id="ra-mot" maxlength="1000" placeholder="Ex.: o problema continua; foto não mostra o serviço feito"></textarea></div>
+    <div class="campo"><label for="ra-resp">Responsável</label><select id="ra-resp"><option value="">— Fila do Escritório —</option>${opcoes(responsaveisPossiveis(c), c.responsavel)}</select></div>
+    <div class="erro-campo" id="ra-erro"></div>`, {
+    textoOk: 'Reabrir chamado',
+    aoConfirmar: async () => {
+      const motivo = $('#ra-mot').value.trim();
+      if (motivo.length < 5) { $('#ra-erro').textContent = 'Informe o motivo da reabertura.'; return false; }
+      const r = await executar('reabrir', { id: c.id, motivo, responsavel: $('#ra-resp').value }, 'Chamado reaberto. Os envolvidos foram avisados.', () => telaDetalhe(c.id));
       return r !== false;
     },
   });
