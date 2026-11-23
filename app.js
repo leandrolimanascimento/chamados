@@ -128,7 +128,7 @@ function lerFoto(arquivo) {
 function campoFotos(idCampo, rotulo) {
   return `<div class="campo"><span class="rotulo">${esc(rotulo)} <span class="obrig">*</span></span>
     <div class="fotos" id="${idCampo}"></div>
-    <span class="pequeno mudo">Pelo menos 1 foto ou arquivo (até ${MAX_FOTOS}, 5 MB cada). “Foto” abre a câmera no celular; “Arquivo” aceita PDF, planilha ou qualquer outro tipo.</span>
+    <span class="pequeno mudo">Pelo menos 1 foto ou arquivo (até ${MAX_FOTOS}, 5 MB cada). No celular: “Câmera” tira a foto na hora e “Galeria” escolhe uma foto salva. No computador: “Imagem” abre o explorador de arquivos. “Arquivo” aceita PDF, planilha ou qualquer outro tipo.</span>
     <span class="erro-campo" id="${idCampo}-erro"></span></div>`;
 }
 /** Lista para enviar ao servidor: [{ nome, dataUrl }]. */
@@ -529,7 +529,7 @@ function telaNovo() {
   ligarAnexos('n-fotos', fotos);
   if (rede) { // Escritorio/Diretoria abrem sem foto (decidido em 16/11/2026)
     $('#n-fotos').closest('.campo').querySelector('.obrig').hidden = true;
-    $('#n-fotos').closest('.campo').querySelector('.pequeno.mudo').textContent = `Opcional para Escritório e Diretoria (até ${MAX_FOTOS} itens, 5 MB cada). “Foto” abre a câmera no celular; “Arquivo” aceita PDF, planilha ou qualquer outro tipo.`;
+    $('#n-fotos').closest('.campo').querySelector('.pequeno.mudo').textContent = `Opcional para Escritório e Diretoria (até ${MAX_FOTOS} itens, 5 MB cada). No celular: “Câmera” tira a foto na hora e “Galeria” escolhe uma foto salva. No computador: “Imagem” abre o explorador de arquivos. “Arquivo” aceita PDF, planilha ou qualquer outro tipo.`;
   }
   if (direcionaLocal) {
     const montarParaLocal = () => {
@@ -733,11 +733,16 @@ function lerArquivo(arq) {
   });
 }
 /** Campo de fotos/anexos (abertura, fechamento e comentário): botão de foto (abre a câmera) e de arquivo (PDF, planilha etc.). */
+/** Tela de toque (celular/tablet): mostra o botão Câmera. No computador ele não faz sentido. */
+const ehToque = () => window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
 function ligarAnexos(idCampo, lista) {
   const caixa = document.getElementById(idCampo);
   const desenhar = () => {
     caixa.innerHTML = lista.map((a, i) => `<div class="miniatura">${ehImagem(a.tipo) ? `<img src="${a.dataUrl}" alt="">` : `<span class="pequeno" style="padding:6px;word-break:break-all">📎 ${esc(a.nome)}</span>`}<button type="button" class="remover" data-i="${i}" aria-label="Remover anexo ${i + 1}">×</button></div>`).join('')
-      + (lista.length < MAX_ANEXOS ? `<label class="adicionar-foto">＋<br>Foto<input type="file" accept="image/*" capture="environment" multiple data-tipo="foto"></label>
+      // 23/11/2026: além da câmera, escolher da GALERIA do celular ou do explorador de arquivos do computador.
+      // "capture" força a câmera no celular, por isso só o botão Câmera tem esse atributo (e só aparece em tela de toque).
+      + (lista.length < MAX_ANEXOS ? `${ehToque() ? `<label class="adicionar-foto">＋<br>Câmera<input type="file" accept="image/*" capture="environment" data-tipo="camera"></label>` : ''}
+        <label class="adicionar-foto">＋<br>${ehToque() ? 'Galeria' : 'Imagem'}<input type="file" accept="image/*" multiple data-tipo="galeria"></label>
         <label class="adicionar-foto">＋<br>Arquivo<input type="file" multiple data-tipo="arquivo"></label>` : '');
     $$('.remover', caixa).forEach((b) => b.addEventListener('click', () => { lista.splice(Number(b.dataset.i), 1); desenhar(); }));
     $$('input[type=file]', caixa).forEach((inp) => inp.addEventListener('change', async () => {
