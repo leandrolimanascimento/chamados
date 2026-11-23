@@ -1147,3 +1147,30 @@ rotear();
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   navigator.serviceWorker.register('sw.js').catch((e) => console.warn('Service worker não registrado', e));
 }
+
+// 23/11/2026: o sistema fica aberto no celular por dias e não pega as versões novas (ex.: anexos da galeria).
+// A cada volta para a tela (e a cada 15 min) confere no index.html se o app.js mudou; se mudou, mostra uma faixa
+// "Versão nova — toque para atualizar". Não recarrega sozinho para não perder texto digitado.
+(function conferirVersaoNova() {
+  const atual = ((document.querySelector('script[src*="app.js"]') || {}).src || '').match(/v=(\d+)/);
+  if (!atual || !location.protocol.startsWith('http')) return;
+  let avisado = false;
+  const conferir = async () => {
+    if (avisado || document.visibilityState !== 'visible') return;
+    try {
+      const html = await (await fetch('index.html', { cache: 'no-store' })).text();
+      const nova = html.match(/app\.js\?v=(\d+)/);
+      if (!nova || nova[1] === atual[1]) return;
+      avisado = true;
+      const faixa = document.createElement('button');
+      faixa.type = 'button';
+      faixa.className = 'faixa-versao';
+      faixa.textContent = '↻ Versão nova do sistema — toque aqui para atualizar';
+      faixa.onclick = () => location.reload();
+      document.body.appendChild(faixa);
+    } catch (e) { /* sem internet: tenta na próxima */ }
+  };
+  document.addEventListener('visibilitychange', conferir);
+  setInterval(conferir, 15 * 60 * 1000);
+  setTimeout(conferir, 5000);
+})();
